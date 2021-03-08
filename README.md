@@ -1,0 +1,1 @@
+# SlideScore-python-sdk
