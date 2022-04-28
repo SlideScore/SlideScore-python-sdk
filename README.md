@@ -14,9 +14,9 @@ Example:
 	client = APIClient(url, token)
 	
 	#download files in a study
-	for f in client.get_images(42):
+	for f in client.get_images(studyid):
 	   print('downloading '+f["name"]+'...', end='', flush=True)
-	   client.download_slide(42, f["id"], ".")
+	   client.download_slide(studyid, f["id"], ".")
 	   print('done')
 	
 	#upload some file
