@@ -5,6 +5,7 @@ import requests
 import base64
 import string
 import re
+import os
 from tusclient import client
 
 
@@ -34,7 +35,7 @@ class SlideScoreResult:
 
         self.image_id = int(dict['imageID'])
         self.image_name = dict['imageName']
-        self.case_name = dict['caseName']
+        self.case_name = dict['caseName'] if 'caseName' in dict else None
         self.user = dict['user']
         self.tma_row = int(dict['tmaRow']) if 'tmaRow' in dict else None
         self.tma_col = int(dict['tmaCol']) if 'tmaCol' in dict else None
@@ -150,22 +151,22 @@ class APIClient(object):
 
     def get_cases(self, studyid):
         """
-        Get slide data (no slides) for all slides in the study.
+        Get all case names and IDs
         Parameters
         ----------
         studyid : int
         Returns
         -------
         dict
-            Dictionary containing the images in the study.
-        For example to download all slides in a study with id 1 into the current directory you need to do 
+            Dictionary containing the cases in the study.
+        For example:
             client = APIClient(url, token)
-            for f in client.get_images(1):
-                client.download_slide(1, f["id"], ".")
+            for c in client.get_cases(1):
+                print(str(c["id"])+" - " + c["name"])
 
         
         """    
-        response = self.perform_request("Images", {"studyid": studyid})
+        response = self.perform_request("Cases", {"studyid": studyid})
         rjson = response.json()
         return rjson
 
@@ -228,6 +229,25 @@ class APIClient(object):
             raise SlideScoreErrorException(f"Configuration for study id {study_id} not returned succesfully")
 
         return rjson["config"]        
+
+    def get_config_files(self, study_id):
+        """
+        Get the configuration files of a particular study. Returns a dictionary with file contents for each file.
+        Parameters
+        ----------
+        study_id : int
+            ID of SlideScore study.
+        Returns
+        -------
+        dict
+        """
+        response = self.perform_request("GetConfigFiles", {"studyid": study_id})
+        rjson = response.json()
+
+        if not rjson["success"]:
+            raise SlideScoreErrorException(f"Configuration for study id {study_id} not returned succesfully")
+
+        return rjson        
         
     def upload_results(self, studyid, results):
         """
@@ -328,7 +348,7 @@ class APIClient(object):
         if response.text != '"OK"':
             raise SlideScoreErrorException("Failed finishing upload: " + response.text);
          
-    def upload_file(self, source_filename, destination_path, destination_filename):
+    def upload_file(self, source_filename, destination_path, destination_filename=None):
         """
         Upload a file to the server.
         Parameters
@@ -338,9 +358,11 @@ class APIClient(object):
         destination_path: string
             path (without filename) on the server
         destination_filename: string 
-            filename to use on the server
+            filename to use on the server, None to use the source filename
         
         """
+        if destination_filename==None:
+            destination_filename = os.path.basename(source_filename)
         uploadToken = self.request_upload(destination_path, destination_filename, None)
         uploadClient = client.TusClient(self.end_point.replace('/Api/','/files/'))
         uploader = uploadClient.uploader(source_filename, chunk_size=10*1000*1000, metadata={'uploadtoken': uploadToken, 'apitoken': self.api_token})
@@ -352,9 +374,48 @@ class APIClient(object):
     def add_slide(self, study_id, destination_filename):
         
         response = self.perform_request("AddSlide", {"studyId": study_id, "path": destination_filename}, method="POST")
-        if response.text != '"OK"':
+        if response.text != '"OK"' and response.text != '{}':
             raise SlideScoreErrorException("Failed adding slide: " + response.text);
+
+    def reimport(self, study_name):
+        response = self.perform_request("Reimport", {"studyName": study_name}, method="POST")
+        if response.text[0] == '"':
+            raise SlideScoreErrorException("Failed reimporting: " + response.text);
+        rjson=response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed reimporting: " + rjson["log"]);
+        return { "id": rjson['id'], "log": rjson["log"]}
         
+    def get_slide_path(self, image_id):
+        response = self.perform_request("GetSlidePath", {"imageId": image_id}, method="GET")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed getting slide path: " + response.text);
+        return rjson['path'] 
         
-    
-    
+    def get_slide_description(self, image_id):
+        response = self.perform_request("GetSlideDescription", {"imageId": image_id}, method="GET")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed getting slide description: " + response.text);
+        return rjson['description'] 
+        
+    def get_case_description(self, case_id):
+        response = self.perform_request("GetCaseDescription", {"caseId": case_id}, method="GET")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed getting case description: " + response.text);
+        return rjson['description'] 
+        
+
+    def update_slide_path(self, image_id, new_path):
+        response = self.perform_request("UpdateSlidePath", {"imageId": image_id, "newPath": new_path}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed updating slide path: " + response.text);
+
+    def update_slide_description(self, study_id, image_id, new_description):
+        response = self.perform_request("SetSlideDescription", {"imageId": image_id, "studyId": study_id, "description": new_description}, method="POST")
+        rjson = response.json()
+        if response.text != '{}':
+            raise SlideScoreErrorException("Failed updating slide description: " + response.text);
