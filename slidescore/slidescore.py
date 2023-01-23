@@ -170,7 +170,7 @@ class APIClient(object):
         rjson = response.json()
         return rjson
 
-    def get_studies(self, studyid):
+    def get_studies(self):
         """
         Get list of studies this token can access
         Parameters
