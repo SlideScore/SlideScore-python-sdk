@@ -85,15 +85,13 @@ if __name__ == "__main__":
         print("Created anno2 @", local_anno2_path, "with size:", int(os.path.getsize(local_anno2_path) / 1024), 'kiB')
 
         # Create DB entry serverside
-        resp = client.perform_request("CreateAnno2", { 
-            "studyid": study_id,
-            "imageId": image_id,
-            "question": "Annotate shape",
-            "email": SLIDESCORE_EMAIL
-        }, method="POST").json()
-
+        anno2 = client.create_anno2(study_id=study_id, image_id=study_id, score_id=None, email=SLIDESCORE_EMAIL, case_id=None, tma_core_id=None, question="Annotate shape")
+        p = Path(anno2path)
+        newp = Path(p.parent,anno2['annoUUID'])
+        p.rename(newp)
+        print(f'Uploading {str(newp)} using {anno2["uploadToken"]}')
         # Actually upload the annotation
-        client.upload_using_token(local_anno2_path, resp["uploadToken"])
+        client.upload_using_token(local_anno2_path, anno2["uploadToken"])
         
-        print(f'Uploaded with uuid: {resp["annoUUID"]}')
+        print(f'Uploaded with uuid: {anno2["annoUUID"]}')
         print(f'Done, view results at: {SLIDESCORE_HOST}/Image/Details?imageId={image_id}&studyId={study_id}')
