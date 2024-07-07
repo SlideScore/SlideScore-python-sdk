@@ -6,8 +6,12 @@ import base64
 import string
 import re
 import os
+import datetime
 from tusclient import client
 
+from .lib.utils import read_slidescore_json
+from .lib.Encoder import Encoder
+from .lib.AnnoClasses import Points, Polygons
 
 class SlideScoreErrorException(Exception):
     pass
@@ -22,6 +26,7 @@ class SlideScoreResult:
             SlideScore server response for annotations/labels.
         """
         if dict is None:
+            self.id = 0
             self.image_id = 0
             self.image_name = ''
             self.case_name = ''
@@ -33,6 +38,7 @@ class SlideScoreResult:
             self.answer = None
             return
 
+        self.id = int(dict['id'])
         self.image_id = int(dict['imageID'])
         self.image_name = dict['imageName']
         self.case_name = dict['caseName'] if 'caseName' in dict else None
@@ -52,11 +58,34 @@ class SlideScoreResult:
                     self.points = annos
                     
     def toRow(self):
-        ret = str(self.case_name) + "\t" + str(self.image_id) + "\t" + self.image_name + "\t" + self.user + "\t"
+        """
+        Options:
+            1. ImageID	Name	By	Question	Answer = 5
+            2. ImageID	Name	By	TMA Row	TMA Col	TMA Sample	Question	Answer = 8
+            3. CaseName	ImageID	Name	By	Question	Answer = 6
+            4. CaseName	ImageID	Name	By	TMA Row	TMA Col	TMA Sample	Question	Answer = 9
+            5. CaseName	By	Question	Answer = 4
+        """
+        answer_str = ''
+        
+        # Prepend case name if needed
+        if self.case_name is not None:
+            answer_str += f'{self.case_name}	'
+        
+        # Early return option 5
+        if self.image_id is None:
+            answer_str += f'{self.case_name}	{self.user}	{self.question}	{self.answer}'
+            return answer_str
+        
+        # Add image_id, name and user
+        answer_str += f'{self.image_id}	{self.image_name}	{self.user}	'
+        # If TMA is defined, add it
         if self.tma_row is not None:
-            ret = ret + str(self.tma_row) + "\t" + str(self.tma_col)+"\t" + self.tma_sample_id + "\t"
-        ret = ret + self.question + "\t" + self.answer
-        return ret
+            answer_str += f'{self.tma_row}	{self.tma_col}	{self.tma_sample_id}	'
+        # Finally add the question and answer
+        answer_str += f'{self.question}	{self.answer}'
+        return answer_str
+
         
     def __repr__(self):
         return (
@@ -69,8 +98,50 @@ class SlideScoreResult:
             f"tma_sample_id={self.tma_sample_id}, "
             f"question={self.question}, "
             f"answer=length {len(self.answer)})"
-        )        
+        )     
 
+class SlideScoreSession:
+    """Wrapper class for storing SlideScore tracking sessions"""
+    def __init__(self, dict=None):
+        if dict is None:
+            self.id = 0
+            self.image_id = 0
+            self.email = ''
+            self.length = ''
+            self.study_id = None
+            self.created_on = None
+            return
+
+        self.id = int(dict['id'])
+        self.image_id = int(dict['imageID'])
+        self.email = dict['email']
+        self.length = int(dict['length'])
+        self.study_id = int(dict['studyID'])
+        #ignore milliseconds, sometimes there are 7 digits
+        self.created_on = datetime.datetime.strptime(dict["createdOn"][:19],"%Y-%m-%dT%H:%M:%S")
+        
+class SlideScoreSessionEvent:
+    """Wrapper class for storing SlideScore tracking session events"""
+    def __init__(self, s=None):
+        if s is None:
+            self.timestamp = 0
+            self.x = 0
+            self.y = 0
+            self.width = 0
+            self.height = 0
+            self.cursor_x = 0
+            self.cursor_y = 0
+            return
+        terms=s.split('\t')
+        self.timestamp = int(terms[0])
+        self.x = int(terms[1])
+        self.y = int(terms[2])
+        self.width = int(terms[3])
+        self.height = int(terms[4])
+        self.cursor_x = int(terms[5])
+        self.cursor_y = int(terms[6])
+
+        
 
 class APIClient(object):
     print_debug = False
@@ -94,7 +165,7 @@ class APIClient(object):
         self.api_token = api_token
         self.disable_cert_checking = disable_cert_checking
 
-    def perform_request(self, request, data, method="POST", stream=True):
+    def perform_request(self, request, data, method="GET", stream=True):
         """
         Base functionality for making requests to slidescore servers. Request should\
         be in the format of the slidescore API: https://www.slidescore.com/docs/api.html
@@ -118,7 +189,7 @@ class APIClient(object):
         verify=True
         if self.disable_cert_checking:
             verify=False
-
+        
         if method == "POST":
             response = requests.post(url, verify=verify, headers=headers, data=data)
         else:
@@ -268,7 +339,7 @@ class APIClient(object):
         response = self.perform_request("UploadResults", {
                  "studyid": studyid,
                  "results": sres
-                 })
+                 }, method="POST")
         rjson = response.json()
         if (not rjson['success']):
             raise SlideScoreErrorException(rjson['log'])
@@ -280,7 +351,8 @@ class APIClient(object):
                  "questionsMap": '\n'.join(key+";"+value for key, val in questions_map.items()),
                  "user": user,
                  "annotationName": annotation_name,
-                 "asapAnnotation": asap_annotation})
+                 "asapAnnotation": asap_annotation}
+                 , method="POST")
         rjson = response.json()
         if (not rjson['success']):
             raise SlideScoreErrorException(rjson['log'])
@@ -320,7 +392,7 @@ class APIClient(object):
         )
 
     def _get_filename(self, s):
-      fname = re.findall("filename\*?=([^;]+)", s, flags=re.IGNORECASE)
+      fname = re.findall("filename*?=([^;]+)", s, flags=re.IGNORECASE)
       return fname[0].strip().strip('"')        
         
     def download_slide(self, studyid, imageid, filepath):
@@ -364,18 +436,26 @@ class APIClient(object):
         if destination_filename==None:
             destination_filename = os.path.basename(source_filename)
         uploadToken = self.request_upload(destination_path, destination_filename, None)
-        uploadClient = client.TusClient(self.end_point.replace('/Api/','/files/'))
-        uploader = uploadClient.uploader(source_filename, chunk_size=10*1000*1000, metadata={'uploadtoken': uploadToken, 'apitoken': self.api_token})
+        self.upload_using_token(source_filename, uploadToken)
+
+    def upload_using_token(self, source_filename, upload_token):
+        uploader_endpoint = self.end_point.replace('/Api/','/files/')
+        uploadClient = client.TusClient(uploader_endpoint)
+        uploader = uploadClient.uploader(source_filename, chunk_size=10*1000*1000, metadata={'uploadtoken': upload_token, 'apitoken': self.api_token})
         # Uploads the entire file.
         # This uploads chunk by chunk.
         uploader.upload()
-        self.finish_upload(uploadToken, uploader.url)
+        self.finish_upload(upload_token, uploader.url)
 
     def add_slide(self, study_id, destination_filename):
         
         response = self.perform_request("AddSlide", {"studyId": study_id, "path": destination_filename}, method="POST")
-        if response.text != '"OK"' and response.text != '{}':
+        rjson=response.json()
+        if response.text[0] == '"':
+            raise SlideScoreErrorException("Failed adding slide: " + rjson);
+        if not rjson["success"]:
             raise SlideScoreErrorException("Failed adding slide: " + response.text);
+        return { "id": rjson['id'], "isOOF": rjson["isOOF"]}
 
     def reimport(self, study_name):
         response = self.perform_request("Reimport", {"studyName": study_name}, method="POST")
@@ -419,3 +499,163 @@ class APIClient(object):
         rjson = response.json()
         if response.text != '{}':
             raise SlideScoreErrorException("Failed updating slide description: " + response.text);
+    
+    def update_slide_name(self, image_id, new_name):
+        response = self.perform_request("UpdateSlideName", {"imageId": image_id, "newName": new_name}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed updating slide name: " + response.text);
+
+    def add_question(self, study_id, question_spec):
+        response = self.perform_request("AddQuestion", {"studyId": study_id, "questionSpec": question_spec}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed adding question: " + response.text);
+        return rjson["id"]
+
+    def update_question(self, study_id, score_id, order, question_spec):
+        response = self.perform_request("UpdateQuestion", {"studyId": study_id, "scoreId": score_id, "order": order, "questionSpec": question_spec}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed updating question: " + response.text);
+        return rjson["id"]
+
+    def remove_question(self, study_id, score_id):
+        response = self.perform_request("RemoveQuestion", {"studyId": study_id, "scoreId": score_id}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed removing question: " + response.text);
+        return True
+    
+    def set_slide_tma_map(self, study_id, image_id, tma_map_name):
+        response = self.perform_request("SetSlideTMAMap", {"studyId": study_id, "imageId": image_id, "tmaMapName": tma_map_name}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed updating slide TMA: " + response.text);
+
+    def create_tma_map(self, study_id, tma_map_filename):
+        response = self.perform_request("CreateTMAMap", {"studyId": study_id, "tmaMapFileName": tma_map_filename}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed creating TMA map: " + response.text);
+        return rjson["mapName"]
+        
+    def is_slide_out_of_focus(self, study_id, image_id):
+        response = self.perform_request("IsSlideOutOfFocus", {"studyId": study_id, "imageId": image_id}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed checking out-of-focus: " + response.text);
+        return rjson["isOOF"]
+
+    def get_raw_tile(self, study_id, image_id, level, x, y, width, height,
+            jpeg_quality):
+        """
+        Get slide pixels
+        Parameters
+        ----------
+        study_id : int
+        image_id : int
+        level: int 
+            Level in the slide (0-highest detail), based on slide metadata
+        x: int
+        y: int
+            X and Y of the tile
+        width: int
+        height: int
+            Size of the requested region
+        jpeg_quality: int
+        
+        Returns
+        -------
+        jpeg file
+
+        
+        """    
+        response = self.perform_request("GetRawTile", {"studyid": study_id, "imageId": image_id,
+        "x": x, "y": y, "width": width, "height": height, "level": level, "jpegQuality": jpeg_quality})
+        return response        
+
+        
+    def convert_to_anno2(self, items, metadata, output_path):
+        """Converts a SlideScore Annotation Object to the new Anno2 zip based format
+        Only supports annotations of points or polygons/brush. Will error otherwise.
+
+        anno1_data: Dictionary containing the annotation like: [{"type": "brush", "positivePolygons": [] ...]
+        metadata: Dictionary containing any metadata regarding the annotation, will be included as JSON in output
+        output_path: string of the path on disk the anno2.zip will be written to
+        """
+        # Allow pre-loaded Points and Polygons objects
+        if not isinstance(items, Points) and not isinstance(items, Polygons):
+            items = read_slidescore_json(items)
+        
+        encoder = Encoder(items, big_polygon_size_cutoff=100 * 100)
+        encoder.generate_tile_data(256)        
+        encoder.populate_lookup_tables()
+        
+        if metadata:
+            encoder.add_metadata(metadata)
+
+        encoder.dump_to_file(output_path)
+        print('Done converting to anno2')
+
+
+    def convert_annotation_to_anno2(self, study_id, case_id, image_id, tma_core_id,
+            score_id, question, email, metadata):
+        """Converts an existing annotation answer to the new Anno2 zip based format
+        case_id, tma_core_id, score_id, and question are optional
+        metadata must be a JSON object for example "{}"
+        You have to specify one of score_id and question
+        """
+        
+        response = self.perform_request("ConvertAnnotationToAnno2", {"studyId": study_id, "caseId": case_id, "imageId": image_id, 
+                "tmaCoreId": tma_core_id, "scoreId": score_id, "question": question, "email": email, "metadata": metadata}, 
+                method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed converting: " + response.text);
+        return rjson["annoUUID"]
+
+    def create_anno2(self, study_id, case_id, image_id, tma_core_id,
+            score_id, question, email):
+        """Creates a new Anno2 format record
+        Returns object with  "uploadToken": "FEU...." and "annoUUID": "8f51008c-9ede-e8b4-cba8-55a2cf6c73bf",
+        
+        You have to specify one of score_id and question
+        """
+        
+        response = self.perform_request("CreateAnno2", {"studyId": study_id, "caseId": case_id, "imageId": image_id, 
+                "tmaCoreId": tma_core_id, "scoreId": score_id, "question": question, "email": email}, 
+                method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed creating: " + response.text);
+        return rjson
+
+        
+    def generate_login_link(self, username, expires_on):
+        response = self.perform_request("GenerateLoginLink", {"username": username, "expiresOn": expires_on}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed generating link: " + response.text);
+        return rjson["link"]
+
+    def generate_student_account(self, username, email, class_id):
+        response = self.perform_request("GenerateStudentAccount", {"username": username, "email": email, "classId": class_id}, method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed generating account: " + response.text);
+        return rjson["password"]
+
+    def get_sessions(self, studyid, email=None, imageid=None):
+        response = self.perform_request("Sessions", {"studyId": studyid, "imageId": imageid, "email": email})
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed getting sessions: " + response.text);
+        return [SlideScoreSession(r) for r in rjson["sessions"]]
+        
+    def get_session_events(self, studyid, sessionid):
+        response = self.perform_request("SessionEvents", {"studyId": studyid, "sessionId": sessionid})
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed getting session events: " + response.text);
+        return [SlideScoreSessionEvent(r) for r in rjson["events"]]
