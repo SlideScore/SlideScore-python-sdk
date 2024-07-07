@@ -11,7 +11,7 @@ setuptools.setup(
     description="SDK for using the API of Slide Score",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/slide-score/SlideScore-python-sdk",
+    url="https://github.com/SlideScore/SlideScore-python-sdk",
     packages=setuptools.find_packages(),
 	keywords="slidescore,slide score, sdk, api",
 	install_requires=[
