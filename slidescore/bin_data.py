@@ -6,6 +6,7 @@ Author: Bart.
 import sys
 import argparse
 import json
+import gzip
 
 from .lib.utils import log, read_geo_json, read_tsv, read_slidescore_json
 from .lib.Encoder import Encoder
@@ -35,6 +36,10 @@ def main(argv=None):
         items = read_geo_json(raw_items_path)
     elif raw_items_path.endswith('.json'):
         with open(raw_items_path, 'r') as fh:
+            data = json.load(fh)
+            items = read_slidescore_json(data)
+    elif raw_items_path.endswith('.json.gz'):
+        with gzip.open(raw_items_path, 'r') as fh:
             data = json.load(fh)
             items = read_slidescore_json(data)
     else:
