@@ -180,15 +180,18 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             self.wfile.write(bytes(json.dumps([{
                 "type": "polygons", 
                 "name": "Dark parts", 
-                "value": result_polygons
+                "value": result_polygons,
+                "color": "#0000FF"
             }, {
                 "type": "points",
                 "name": "Dark parts centroids",
-                "value": convert_polygons_2_centroids(result_polygons)
+                "value": convert_polygons_2_centroids(result_polygons),
+                "color": "#00FFFF"
             }, {
                 "type": "anno2",
                 "name": "anno2 dark polygons",
-                "value": convert_polygons_2_anno2_uuid(result_polygons, client)
+                "value": convert_polygons_2_anno2_uuid(result_polygons, client),
+                "color": "#00FF00"
             }
             ]), "utf-8"))
 
