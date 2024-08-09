@@ -53,9 +53,7 @@ class Encoder():
             num_points = int(len(items.polygons.valuesArray) / 2)
             log("Loaded", self.dataItems["numItems"], "polygons in encoder, with num points", num_points)
         elif isinstance(items, Heatmap):
-            log("Loaded", self.dataItems["numItems"], "byte heatmap in encoder, with shape", items.matrix.shape)
-
-
+            log("Loaded", self.dataItems["numItems"], "byte heatmap in encoder, with shape", len(self.items.matrix), len(self.items.matrix[0]))
 
     def calc_rect_around_item(self, item: Item):
         """Calculates a bounding box around a point or polygon, if it is a point the rectangle is the point"""
@@ -116,8 +114,8 @@ class Encoder():
         elif isinstance(self.items, Polygons):
             self.dataItems["polygonContainer"] = self.bin_polygons_into_tiles(tile_size)
         elif isinstance(self.items, Heatmap):
-            shape = self.items.matrix.shape
-            self.dataItems["heatmapPng"] = encode_png(self.items.matrix, shape[1], shape[0], bitdepth=8)
+            height, width = len(self.items.matrix), len(self.items.matrix[0])
+            self.dataItems["heatmapPng"] = encode_png(self.items.matrix, width, height, bitdepth=8)
 
 
     def bin_points_into_tiles(self, tile_size):

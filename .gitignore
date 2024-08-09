@@ -1,3 +1,5 @@
 venv*
 build*
 scratchpad*
+*egg-info
+__pycache__
