@@ -25,10 +25,10 @@ def create_tmp_file(content: str, suffix='.tmp'):
             fh.write(content)
     return name
 
-def convert_polygons_2_anno2_uuid(polygons, client):
+def convert_2_anno2_uuid(polygons, client, metadata=''):
     # Convert to anno2 zip, upload, and return uploaded anno2 uuid
     local_anno2_path = create_tmp_file('', '.zip')
-    client.convert_to_anno2(polygons, '{"meta": "Dark polygons"}', local_anno2_path)
+    client.convert_to_anno2(polygons, metadata, local_anno2_path)
     response = client.perform_request("CreateOrphanAnno2", {}, method="POST").json()
     assert response["success"] is True
 
@@ -177,6 +177,8 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             # Return an JSON array with a single result, A list of polygons surrounding the dark parts of the ROI.
+            points = convert_polygons_2_centroids(result_polygons)
+
             self.wfile.write(bytes(json.dumps([{
                 "type": "polygons", 
                 "name": "Dark parts", 
@@ -185,13 +187,18 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             }, {
                 "type": "points",
                 "name": "Dark parts centroids",
-                "value": convert_polygons_2_centroids(result_polygons),
+                "value": points,
                 "color": "#00FFFF"
             }, {
                 "type": "anno2",
                 "name": "anno2 dark polygons",
-                "value": convert_polygons_2_anno2_uuid(result_polygons, client),
+                "value": convert_2_anno2_uuid(result_polygons, client, metadata='{ "comment": "dark polygons"}'),
                 "color": "#00FF00"
+            }, {
+                "type": "anno2",
+                "name": "anno2 dark points",
+                "value": convert_2_anno2_uuid(points, client, metadata='{ "comment": "dark points"}'),
+                "color": "#FFFF00"
             }
             ]), "utf-8"))
 
