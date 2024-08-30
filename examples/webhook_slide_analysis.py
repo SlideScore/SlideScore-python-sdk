@@ -10,6 +10,7 @@ import json
 import argparse
 import tempfile
 import traceback
+import time
 
 import slidescore
 
@@ -137,7 +138,7 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
         try:
             post_body = self.rfile.read(content_len).decode()
             request = json.loads(post_body)
-            
+            time_got_request = time.time()
             """
             default http post payload:
                 "host": "${document.location.origin}",
@@ -178,6 +179,7 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             self.end_headers()
             # Return an JSON array with a single result, A list of polygons surrounding the dark parts of the ROI.
             points = convert_polygons_2_centroids(result_polygons)
+            # time.sleep(10)
 
             self.wfile.write(bytes(json.dumps([{
                 "type": "polygons", 
@@ -199,6 +201,11 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
                 "name": "anno2 dark points",
                 "value": convert_2_anno2_uuid(points, client, metadata='{ "comment": "dark points"}'),
                 "color": "#FFFF00"
+            },
+            {
+                "type": "text",
+                "name": "Description of results",
+                "value": f'These results took {(time.time() - time_got_request):.2f} s to generate'
             }
             ]), "utf-8"))
 
