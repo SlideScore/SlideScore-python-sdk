@@ -148,8 +148,8 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
                 "caseid": %CASE_ID%,
                 "casename": "%CASE_NAME%",
                 "email": "%USER_EMAIL%",
-                "webhookid": %WEBHOOK_ID%,
-                "webhookname": "%WEBHOOK_NAME%",
+                "analysisid": %ANALYSIS_ID%,
+                "analysisname": "%ANALYSIS_NAME%",
                 "answers": %ANSWERS%,
                 "apitoken": "%API_TOKEN%"
             """
@@ -159,8 +159,8 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             imagename = request["imagename"]
             case_id = int(request["imageid"])
             email = request["email"]
-            webhook_id = int(request["webhookid"])
-            webhook_name = request["webhookname"]
+            analysis_id = int(request["analysisid"])
+            analysis_name = request["analysisname"]
             case_name = request["casename"]
             answers = request["answers"] # Answers to the questions field, needs to be validated to contain the expected vals
             apitoken = request["apitoken"] # Api token that is generated on the fly for this request
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     webServer = HTTPServer((args.host, args.port), ExampleAPIServer)
-    print(f"Server started http://{args.host}:{args.port}, configure your slidescore instance with a default webhook pointing to this host.")
+    print(f"Server started http://{args.host}:{args.port}, configure your slidescore instance with a default analysis endpoint pointing to this host.")
     try:
         webServer.serve_forever()
     except KeyboardInterrupt:
