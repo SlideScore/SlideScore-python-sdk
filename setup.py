@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="slidescore-sdk",
-    version="1.4.4",
+    version="1.4.5",
     author="Slide Score B.V.",
     author_email="info@slidescore.com",
     description="SDK for using the API of Slide Score",
