@@ -39,7 +39,7 @@ class SlideScoreResult:
             return
 
         self.id = int(dict['id'])
-        self.image_id = int(dict['imageID'])
+        self.image_id = int(dict['imageID']) if dict['imageID'] != None else 0
         self.image_name = dict['imageName']
         self.case_name = dict['caseName'] if 'caseName' in dict else None
         self.user = dict['user']
