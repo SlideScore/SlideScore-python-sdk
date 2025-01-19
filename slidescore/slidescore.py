@@ -659,3 +659,26 @@ class APIClient(object):
         if not rjson["success"]:
             raise SlideScoreErrorException("Failed getting session events: " + response.text);
         return [SlideScoreSessionEvent(r) for r in rjson["events"]]
+        
+    def upload_attachment(self, study_id, module_id, filename, label):
+        """Uploads an attachment
+        For adding attachments to slide, case or study set the study_di, for a teaching module description set the module_id.
+        Returns a link element for the attachment that can be added to a description
+        
+        You have to specify one of study_id or module_id - module_id is for settings description of teaching modules
+        """
+        filenameonly=os.path.basename(filename)
+        response = self.perform_request("RequestUploadAttachment", {"studyId": study_id, "moduleId": module_id, "filename": filenameonly}, 
+                method="POST")
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed requesting upload: " + response.text);
+        oururl=self.end_point.replace('/Api/','')
+        tempApiToken=rjson['token']
+        folder=rjson['folder']
+        new_filename=rjson['filename']
+        att_id=rjson['attId']
+        uploadClient=APIClient(oururl, tempApiToken)
+        uploadClient.upload_file(filename, folder, new_filename)
+        shortguid=new_filename.split('-')[0]
+        return '<div><a href="'+oururl+'/a/'+str(att_id)+'/'+shortguid+'/'+filenameonly+'" target="_blank" rel="noopener" class="jsSquireAttachment jsSquireLink" style="display: inline-block;"><span class="glyphicon glyphicon glyphicon-paperclip"> </span>&nbsp;'+label+'&nbsp;</a><br></div>'
