@@ -26,10 +26,10 @@ def create_tmp_file(content: str, suffix='.tmp'):
             fh.write(content)
     return name
 
-def convert_2_anno2_uuid(polygons, client, metadata=''):
+def convert_2_anno2_uuid(items, client, metadata=''):
     # Convert to anno2 zip, upload, and return uploaded anno2 uuid
     local_anno2_path = create_tmp_file('', '.zip')
-    client.convert_to_anno2(polygons, metadata, local_anno2_path)
+    client.convert_to_anno2(items, metadata, local_anno2_path)
     response = client.perform_request("CreateOrphanAnno2", {}, method="POST").json()
     assert response["success"] is True
 
@@ -49,6 +49,44 @@ def convert_polygons_2_centroids(polygons):
             "y": sum_y / len(polygon['points']),
         })
     return centroids
+
+def convert_points_2_heatmap(points, size_per_pixel = 64):
+    """Creates an anno1 heatmap object from a set of points, size_per_pixel is in image pixels per heatmap "pixel" """
+    # Figure out the size of the heatmap
+    min_x, max_x = float('inf'), float('-inf')
+    min_y, max_y = float('inf'), float('-inf')
+    for point in points:
+        min_x, max_x = min(min_x, point['x']), max(max_x, point['x'])
+        min_y, max_y = min(min_y, point['y']), max(max_y, point['y'])
+    
+
+    # Fill the heatmap data with empty rows
+    num_columns = int((max_x - min_x) // size_per_pixel + 1)
+    num_rows    = int((max_y - min_y) // size_per_pixel + 1)
+    heatmap_data = [ [0] * num_columns for row_i in range(num_rows) ]
+    
+    # Populate the heatmap with the points data
+    max_heatmap_val = 1
+    for point in points:
+        heatmap_x = int((point['x'] - min_x) // size_per_pixel)
+        heatmap_y = int((point['y'] - min_y) // size_per_pixel)
+        heatmap_data[heatmap_y][heatmap_x] += 1
+        max_heatmap_val = max(max_heatmap_val, heatmap_data[heatmap_y][heatmap_x])
+    # Remap heatmap data to be between 0 and 255
+    for heatmap_y in range(num_rows):
+        for heatmap_x in range(num_columns):
+            heatmap_data[heatmap_y][heatmap_x] = round((heatmap_data[heatmap_y][heatmap_x] / max_heatmap_val) * 255)
+
+
+    # Return full object
+    heatmap = {
+        "x": min_x,
+        "y": min_y,
+        "height": max_y - min_y,
+        "data": heatmap_data,
+        "type": "heatmap"
+    }
+    return heatmap
 
 def convert_contours_2_polygons(contours, cur_img_dims, roi):
     """Converts OpenCV2 contours to AnnoShape Polygons format of SlideScore
@@ -179,7 +217,8 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
             self.end_headers()
             # Return an JSON array with a single result, A list of polygons surrounding the dark parts of the ROI.
             points = convert_polygons_2_centroids(result_polygons)
-            # time.sleep(10)
+            # Convert centroids to a heatmap
+            heatmap = convert_points_2_heatmap(points)
 
             self.wfile.write(bytes(json.dumps([{
                 "type": "polygons", 
@@ -201,6 +240,12 @@ class ExampleAPIServer(BaseHTTPRequestHandler):
                 "name": "anno2 dark points",
                 "value": convert_2_anno2_uuid(points, client, metadata='{ "comment": "dark points"}'),
                 "color": "#FFFF00"
+            },
+            {
+                "type": "anno2",
+                "name": "anno2 heatmap",
+                "value": convert_2_anno2_uuid([heatmap], client, metadata='{ "comment": "heatmap of dark points"}'),
+                "color": "Turbo"
             },
             {
                 "type": "text",
