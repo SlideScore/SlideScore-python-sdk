@@ -35,7 +35,7 @@ def get_study_and_image(client: slidescore.APIClient):
             has_correct_question = True
     
     if not has_correct_question:
-        exit("This study does not have a question with the name: 'Annotate shape' of the Shapes type, please add it")
+        exit("This study does not have a question with the name: 'Annotate shape' of the Shapes type, please add it or change the code of the example")
     print('[✓] Verified this study has the correct question!')
     
     images = client.get_images(study_id)
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     SLIDESCORE_HOST = SLIDESCORE_HOST[:-1] if SLIDESCORE_HOST.endswith('/') else SLIDESCORE_HOST
 
     if len(sys.argv) < 2 or not sys.argv[1].endswith('.tsv'):
-        exit("Please supply a .tsv file as the first argument")
+        exit("Please supply a .tsv file as the first argument, 2 coords per line")
     tsv_file = sys.argv[1]
     metadata = { # Set any JSON as metadata
         "origFilePath": tsv_file,
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         print('Created temporary directory for Anno2 storage', tmp_dirname)
         
         # Read the TSV data into memory
-        anno_data = slidescore.lib.utils.read_tsv(tsv_file) 
+        anno_data = slidescore.lib.utils.read_tsv(tsv_file, "circles") #or mask, polygon, or brush
 
         # Convert to anno2
         local_anno2_path = os.path.join(tmp_dirname, 'anno.zip')
@@ -85,13 +85,12 @@ if __name__ == "__main__":
         print("Created anno2 @", local_anno2_path, "with size:", int(os.path.getsize(local_anno2_path) / 1024), 'kiB')
 
         # Create DB entry serverside
-        anno2 = client.create_anno2(study_id=study_id, image_id=study_id, score_id=None, email=SLIDESCORE_EMAIL, case_id=None, tma_core_id=None, question="Annotate shape")
-        p = Path(anno2path)
-        newp = Path(p.parent,anno2['annoUUID'])
-        p.rename(newp)
+        anno2 = client.create_anno2(study_id=study_id, image_id=image_id, score_id=None, email=SLIDESCORE_EMAIL, case_id=None, tma_core_id=None, question="Annotate shape")
+        newp = os.path.join(tmp_dirname, anno2['annoUUID'])
+        os.rename(local_anno2_path, newp)
         print(f'Uploading {str(newp)} using {anno2["uploadToken"]}')
         # Actually upload the annotation
-        client.upload_using_token(local_anno2_path, anno2["uploadToken"])
+        client.upload_using_token(newp, anno2["uploadToken"])
         
         print(f'Uploaded with uuid: {anno2["annoUUID"]}')
         print(f'Done, view results at: {SLIDESCORE_HOST}/Image/Details?imageId={image_id}&studyId={study_id}')
