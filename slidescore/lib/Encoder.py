@@ -41,7 +41,7 @@ class Encoder():
 
         type_string = items.name.lower() # can be points/mask/polygons/heatmap
         self.system_metadata = {
-            "version": "0.0.3",
+            "version": "0.1.0",
             "type": type_string,
             "numItems": len(items)
         }
@@ -52,6 +52,11 @@ class Encoder():
         elif isinstance(items, Polygons):
             num_points = int(len(items.polygons.valuesArray) / 2)
             log("Loaded", self.dataItems["numItems"], "polygons in encoder, with num points", num_points)
+            items.simplify()
+            num_points = int(len(items.polygons.valuesArray) / 2)
+            log("Simplified to num points", num_points)
+
+
         elif isinstance(items, Heatmap):
             log("Loaded", self.dataItems["numItems"], "byte heatmap in encoder, with shape", len(self.items.matrix), len(self.items.matrix[0]))
 
@@ -380,6 +385,11 @@ def add_polygon_container_2_zip(zip, container, dir_name):
     polygon_bytes = container.encode_polygons()
     polygon_compressed_bytes = brotli.compress(polygon_bytes, quality=8)
     zip.writestr(f'{dir_name}/encoded_polygons.bin.br', polygon_compressed_bytes)
+
+    # Then add the (compressed) simplified encoded polygon bytes
+    simpl_polygon_bytes = container.encode_simplified_polygons()
+    simpl_polygon_compressed_bytes = brotli.compress(simpl_polygon_bytes, quality=8)
+    zip.writestr(f'{dir_name}/simpl_encoded_polygons.bin.br', simpl_polygon_compressed_bytes)
 
     # Finally add the negative polygons
     negative_polygons_bytes = str.encode(json.dumps(container.polygons.negative_polygons_i, indent=2))

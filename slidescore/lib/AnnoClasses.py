@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 from typing import Dict, List, Union
 import array
+
+from slidescore.lib.simplify import simplifyPolygons
 # import numpy as np
 
 class Points(Sequence):
@@ -10,9 +12,13 @@ class Points(Sequence):
     flattened_points = None
     name = "points"
 
-    def __init__(self):
+    def __init__(self, init_points: list = None):
         self.flattened_points = array.array('I')
         super().__init__()
+
+        if init_points:
+            for point in init_points:
+                self.addPoint(point[0], point[1])
 
     def __getitem__(self, i: int):
         x = self.flattened_points[i * 2]
@@ -28,8 +34,9 @@ class Points(Sequence):
 class Polygons(Sequence):
     """Somewhat space effecient method of storing the positive and negative vertices from a polygon.
     
-    Internally uses Points to store the positive vertices of each polygon"""
+    Internally uses EfficientArray to store the positive vertices of each polygon"""
     polygons = None
+    simplified_polygons = []
     negative_polygons_i = {}
     labels = []
     name = "polygons"
@@ -60,6 +67,12 @@ class Polygons(Sequence):
         if pos_polygon_i not in self.negative_polygons_i:
             self.negative_polygons_i[pos_polygon_i] = []
         self.negative_polygons_i[pos_polygon_i].append(neg_polygon_i)
+
+    def simplify(self):
+        """Simplifies the stored polygons to 1 px accuracy, and stores further simplified polygons lookup tables"""
+        self.polygons = simplifyPolygons(self.polygons, 1)
+        # Hard coded tolerance of 16 pixels for now
+        self.simplified_polygons = simplifyPolygons(self.polygons, 16)
 
     def __len__(self):
         return len(self.polygons) # Number of polygons present, pos & neg
