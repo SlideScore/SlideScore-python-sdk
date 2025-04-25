@@ -33,6 +33,7 @@ class Polygons(Sequence):
     negative_polygons_i = {}
     labels = []
     name = "polygons"
+    metadata = {} # metadata per polygon index, like: {0: {"type": "lymphocyte"}, 3: {"type": "dendrophyl"}}
 
     def __init__(self):
         self.polygons = EfficientArray()

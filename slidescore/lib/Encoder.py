@@ -387,6 +387,10 @@ def add_polygon_container_2_zip(zip, container, dir_name):
     negative_polygons_bytes = str.encode(json.dumps(container.polygons.negative_polygons_i, indent=2))
     zip.writestr(f'{dir_name}/negative_polygons.json', negative_polygons_bytes)
 
+    # Add metadata if available
+    if len(container.polygons.metadata) > 0:
+        add_item_metadata_2_zip(zip, len(container.polygons), container.polygons.metadata, f'{dir_name}/items_metadata.jsonl')
+
 def add_buffer_2_tar(tar, buffer, name):
     """Utility to add a buffer to a TARball with a certain name. Used to encode the points tile PNG's"""
     tarInfo = tarfile.TarInfo(name=name)
@@ -395,3 +399,29 @@ def add_buffer_2_tar(tar, buffer, name):
         tarInfo,
         io.BytesIO(buffer)
     )
+
+def add_item_metadata_2_zip(zip, num_items, item_metadata, fn):
+    """
+    Utility to add item metadata to an anno2 zip, item_metadata should be in the form:
+    {2: {"note": "Example"}, 4: "color": "#FF00EE"}}. Where the integers represent item indices.
+    """
+    # Create a jsonl and an index of it
+    jsonl = '\n'
+    
+    index = b''
+
+    # Loop over all items
+    for i in range(num_items):
+        metadata = item_metadata.get(i)
+        if not metadata:
+            index += (0).to_bytes(4, byteorder='little', signed=False)
+        else:
+            index += len(jsonl).to_bytes(4, byteorder='little', signed=False)
+            jsonl += json.dumps(metadata) + '\n'
+    index += len(jsonl).to_bytes(4, byteorder='little', signed=False)
+
+    jsonl_compressed_bytes = brotli.compress(str.encode(jsonl), quality=8)
+    zip.writestr(fn + '.br', jsonl_compressed_bytes)
+
+    index_compressed_bytes = brotli.compress(index, quality=8)
+    zip.writestr(fn + '.index.br', index_compressed_bytes)

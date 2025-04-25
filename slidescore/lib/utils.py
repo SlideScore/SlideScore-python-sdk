@@ -77,56 +77,89 @@ def read_tsv_polygons(path: str):
     return items
 
 def read_geo_json(path: str):
-    """Assumed are the QuPath GeoJSON files, containing only polygons."""
-    items = Polygons()
+    """Assumed are the QuPath GeoJSON files, containing only polygons or points."""
+    # Return either of these, show warning if both have entries
+    polygons = Polygons()
+    points = Points()
 
     with open(path, 'r') as fh:
         data = json.load(fh)
-    polygon_generator = extract_polygons_from_geojson(data)
-    for positive_vertices, negative_vertices_list in polygon_generator:
-        # Round the positive vertices into ints and add them to a Polygons class
-        cur_polygon = []
-        for point in positive_vertices:
+    
+    polygon_or_points_generator = extract_geojson(data)
+    for metadata, positive_vertices, negative_vertices_list in polygon_or_points_generator:
+        if len(positive_vertices) == 1:
+            # This is a point, not a polygon
+            point = positive_vertices[0]
             x, y = round(point[0]), round(point[1])
-            cur_polygon.extend([x, y])
-        pos_polygon_i = items.addPolygon(cur_polygon)
-
-        # Add any negative polygons, if present
-        for negative_vertices in negative_vertices_list:
-            cur_neg_polygon = []
-            for point in negative_vertices:
+            points.addPoint(x, y)
+            # Points metadata ignored for now
+        else:
+            # Round the positive vertices into ints and add them to a Polygons class
+            cur_polygon = []
+            for point in positive_vertices:
                 x, y = round(point[0]), round(point[1])
-                cur_neg_polygon.extend([x, y])
-            neg_polygon_i = items.addPolygon(cur_neg_polygon)
+                cur_polygon.extend([x, y])
+            pos_polygon_i = polygons.addPolygon(cur_polygon)
 
-            items.linkPosPolygonToNegPolygon(pos_polygon_i, neg_polygon_i)
+            # Add per-polygon metadata
+            if metadata is not None:
+                polygons.metadata[pos_polygon_i] = metadata
 
-    if len(items) == 0:
-        sys.exit("No items loaded")
+            # Add any negative polygons, if present
+            for negative_vertices in negative_vertices_list:
+                cur_neg_polygon = []
+                for point in negative_vertices:
+                    x, y = round(point[0]), round(point[1])
+                    cur_neg_polygon.extend([x, y])
+                neg_polygon_i = polygons.addPolygon(cur_neg_polygon)
 
-    return items
+                polygons.linkPosPolygonToNegPolygon(pos_polygon_i, neg_polygon_i)
 
-def extract_polygons_from_geojson(data):
-    """Yields all polygons and their negative vertices from a QuPath GeoJSON data object like so:
-    yield (positiveVertices, [negativeVertices1, negativeVertices2, ...])
+    if len(points) == 0 and len(polygons) == 0:
+        raise Exception("No points or polygons loaded from GeoJSON")
+
+    if len(points) != 0 and len(polygons) == 0:
+        return points
+
+    if len(points) == 0 and len(polygons) != 0:
+        return polygons
+
+    # We got _both_ polygons and points
+    print("WARNING: Detected BOTH points and polygons in GeoJSON, only continueing with polygons", file=sys.stderr)
+    print("WARNING: Please remove the points from the GeoJSON to prevent ambiguity", file=sys.stderr)
+    return polygons
+
+def extract_geojson(data):
+    """Yields all polygons and points and their negative vertices from a QuPath GeoJSON data object like so:
+    yield (metadata, positiveVertices, [negativeVertices1, negativeVertices2, ...])
+    if postiveVertices is of length 2, store them as points
+    https://datatracker.ietf.org/doc/html/rfc7946
     """
     for feature in data["features"]:
         if "geometry" not in feature:
             continue
-    
+        metadata = feature.get('properties')
+
         geometry = feature["geometry"]
         if geometry["type"] == "Polygon":
-            yield geometry["coordinates"][0], geometry["coordinates"][1:]
+            # The first entry is the "exterior" ring and the others "interior" rings
+            # so the second ones are deemed "negative" polygons, because they are holes
+            yield (metadata, geometry["coordinates"][0], geometry["coordinates"][1:])
             
             if "nucleusGeometry" not in feature:
                 continue
             nucl_geometry = feature["nucleusGeometry"]
             if nucl_geometry["type"] != "Polygon":
                 continue
-            yield nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:]
+            yield (None, nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:])
         elif geometry["type"] == "MultiPolygon":
             for polygon in geometry["coordinates"]:
-                yield polygon[0], polygon[1:]
+                yield (None, polygon[0], polygon[1:])
+        elif geometry["type"] == "Point":
+            # If we got a GeoJSON with points, report them as a polygon of length 2
+            # Callee should handle this
+            for polygon in geometry["coordinates"]:
+                yield (metadata, [geometry["coordinates"]], [])
 
 def read_slidescore_json(data):
     """Parses JSON's that are created using the SlideScore Front-end.
