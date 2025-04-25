@@ -151,7 +151,7 @@ def extract_geojson(data):
             nucl_geometry = feature["nucleusGeometry"]
             if nucl_geometry["type"] != "Polygon":
                 continue
-            yield (None, nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:])
+            yield (metadata, nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:])
         elif geometry["type"] == "MultiPolygon":
             for polygon in geometry["coordinates"]:
                 yield (None, polygon[0], polygon[1:])
