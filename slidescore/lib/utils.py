@@ -92,7 +92,9 @@ def read_geo_json(path: str):
             point = positive_vertices[0]
             x, y = round(point[0]), round(point[1])
             points.addPoint(x, y)
-            # Points metadata ignored for now
+
+            if metadata is not None:
+                points.metadata[f'{x},{y}'] = metadata
         else:
             # Round the positive vertices into ints and add them to a Polygons class
             cur_polygon = []

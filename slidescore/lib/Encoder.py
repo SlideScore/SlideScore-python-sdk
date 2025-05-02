@@ -135,10 +135,9 @@ class Encoder():
         # Determine if we want to store the points as a compressed JSON, or as PNG tiles
         are_few_points = len(items) < self.few_points_cutoff
         is_points = self.items.name == 'points' # Could also be mask
-        has_metadata = 'metadata' in self.items
 
-        if (are_few_points and is_points) or (has_metadata and is_points):
-            log(f"Detected few points ({len(items)}), saving anno1 JSON")
+        if (are_few_points and is_points):
+            log(f"Detected few points ({len(items)}) , saving anno1 JSON")
             # Instead encode as a Anno1 JSON, that will get compressed when dumping to a file
             anno1_points = [{"x": img_x, "y": img_y} for img_x, img_y in items]
             return json.dumps(anno1_points)
@@ -341,6 +340,13 @@ class Encoder():
                 else:
                     zip.writestr(f'anno1_points.json.br', brotli.compress(self.dataItems["masks"].encode(), quality=8))
             
+            # Add metadata if available, this is both for polygons and points
+            has_metadata = len(getattr(self.items, 'metadata', []))
+            if has_metadata:
+                item_metadata_json = json.dumps(self.items.metadata)
+                item_metadata_json_compressed_bytes = brotli.compress(str.encode(item_metadata_json), quality=8)
+                zip.writestr(f'items_metadata.json.br', item_metadata_json_compressed_bytes)
+
             # Add polygons if possible
             if 'polygonContainer' in self.dataItems:
                 add_polygon_container_2_zip(zip, self.dataItems["polygonContainer"], 'polygon_container')
@@ -395,11 +401,6 @@ def add_polygon_container_2_zip(zip, container, dir_name):
     negative_polygons_bytes = str.encode(json.dumps(container.polygons.negative_polygons_i, indent=2))
     zip.writestr(f'{dir_name}/negative_polygons.json', negative_polygons_bytes)
 
-    # Add metadata if available
-    if len(container.polygons.metadata) > 0:
-        item_metadata_json = json.dumps(container.polygons.metadata)
-        item_metadata_json_compressed_bytes = brotli.compress(str.encode(item_metadata_json), quality=8)
-        zip.writestr(f'{dir_name}/items_metadata.json.br', item_metadata_json_compressed_bytes)
 
 def add_buffer_2_tar(tar, buffer, name):
     """Utility to add a buffer to a TARball with a certain name. Used to encode the points tile PNG's"""

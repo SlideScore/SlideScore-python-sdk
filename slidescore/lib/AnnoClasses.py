@@ -11,6 +11,7 @@ class Points(Sequence):
     Can be indexed to a get a tuple of the n'th point."""
     flattened_points = None
     name = "points"
+    metadata = {} # metadata per point "x,y", like: {"21,53": {"type": "lymphocyte"}, "3,4": {"type": "dendrophyl"}}
 
     def __init__(self, init_points: list = None):
         self.flattened_points = array.array('I')
