@@ -21,9 +21,12 @@ def read_tsv(path: str, points_type: str):
 
     are_points = len(line_parts) == 2
     is_heatmap = line_parts[0].lower() == 'heatmap'
+    is_binary_heatmap = line_parts[0].lower() == 'binary-heatmap'
 
     if is_heatmap:
         items = read_tsv_heatmap(path)
+    elif is_binary_heatmap:
+        items = read_tsv_binary_heatmap(path)
     elif are_points:
         items = read_tsv_points(path)
         if points_type == "mask":
@@ -343,6 +346,33 @@ def read_tsv_heatmap(path: str):
             x, y, value = int(line_parts[0]), int(line_parts[1]), int(line_parts[2])
             heatmap.setPoint(x, y, value)
 
+    return heatmap
+
+def read_tsv_binary_heatmap(path: str):
+    """Read lines from a file to extract binary heatmap points. One point, consisting of 2 coordinates seperated by a tab, should be encoded per line.
+    The first line should be a header, with the first word being "binary-heatmap", then the x and y offset, and last the size per pixel
+    Like this:
+    ```
+    binary-heatmap 100 100 16 # x_offset y_offset size_per_pixel
+    x1 y1
+    x2 y2
+    etc.
+    ```
+    """
+    with open(path, 'r') as fh:
+        first_line_parts = fh.readline().split()
+        x_offset = int(first_line_parts[1])
+        y_offset = int(first_line_parts[2])
+        size_per_pixel = int(first_line_parts[3])
+        data = [[]] # Start out with an empty list
+
+        # Construct the heatmap
+        heatmap = Heatmap(data, x_offset, y_offset, size_per_pixel)
+        for line in fh:
+            line_parts = line.split()
+            x, y = int(line_parts[0]), int(line_parts[1])
+            heatmap.setPoint(x, y, 255)
+    heatmap.name = 'binary-heatmap'
     return heatmap
 
 # Export functions

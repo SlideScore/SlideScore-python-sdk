@@ -39,9 +39,9 @@ class Encoder():
         }
         self.dataLookup = []
 
-        type_string = items.name.lower() # can be points/mask/polygons/heatmap
+        type_string = items.name.lower() # can be points/mask/polygons/heatmap/binary-heatmap
         self.system_metadata = {
-            "version": "0.1.0",
+            "version": "0.2.0",
             "type": type_string,
             "numItems": len(items)
         }
@@ -58,7 +58,7 @@ class Encoder():
 
 
         elif isinstance(items, Heatmap):
-            log("Loaded", self.dataItems["numItems"], "byte heatmap in encoder, with shape", len(self.items.matrix), len(self.items.matrix[0]))
+            log("Loaded", self.dataItems["numItems"], f"byte {items.name} in encoder, with shape", len(self.items.matrix), len(self.items.matrix[0]))
 
     def calc_rect_around_item(self, item: Item):
         """Calculates a bounding box around a point or polygon, if it is a point the rectangle is the point"""
