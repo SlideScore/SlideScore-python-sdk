@@ -36,7 +36,7 @@ def test_create_study():
     
     images = client.get_images(study_id)
     assert len(images) == 1
-    assert images[0]['name'] == 'test_slide'
+    assert images[0]['name'] == 'test-image'
 
 if __name__ == "__main__":
     sys.exit('This file is meant to be ran by PyTest')
