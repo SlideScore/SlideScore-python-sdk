@@ -51,5 +51,8 @@ class PolygonContainer:
 
     def encode_polygons(self):
         """Encode the stored polygons in a very space effecient manner."""
-        return polygons_2_bytes(self.polygons)
+        return polygons_2_bytes(self.polygons.polygons)
 
+    def encode_simplified_polygons(self):
+        """Encode the 'simplified_polygons' in the Polygons to space-effecient bytes"""
+        return polygons_2_bytes(self.polygons.simplified_polygons)

@@ -53,6 +53,24 @@ ANNO1_options = [
 7 1 5
 """
     },
+        {
+        "filename": "heatmap_anno1.json",
+        "content": """
+[
+    {
+        "type": "heatmap",
+        "x": 128,
+        "y": 32,
+        "height": 64,
+        "data": [
+            [255, 200, 150, 100],
+            [200, 150, 100, 50],
+            [150, 100, 50, 5],
+            [100, 50, 5, 1]
+        ]
+    }
+]"""
+    },
     {
         "filename": "mask.tsv",
         "content": gen_mask_tsv(256, x_offset=400, y_offset=400),
@@ -63,8 +81,8 @@ ANNO1_options = [
         "content": json.dumps([{"x": 50, "y": 50}] * 1000 * 1000),
     }
 ]
-questions_str = "points	AnnoPoints	#e6194b\npolygons	AnnoShapes	#3cb44b\nheatmap	AnnoShapes	#3cb44b\nmask	AnnoPoints	#e6194b\npointsPNG	AnnoPoints	#00FF4b"
-question_names = ['points', 'polygons', 'polygons', 'polygons', 'heatmap', 'mask', 'pointsPNG'] # See above
+questions_str = "points	AnnoPoints	#e6194b\npolygons	AnnoShapes	#3cb44b\nheatmap	AnnoShapes	#3cb44b\nheatmap2	AnnoShapes	#3cb44b\nmask	AnnoPoints	#e6194b\npointsPNG	AnnoPoints	#00FF4b"
+question_names = ['points', 'polygons', 'polygons', 'polygons', 'heatmap', 'heatmap2', 'mask', 'pointsPNG'] # See above
 
 
 def create_anno2s():

@@ -11,7 +11,7 @@ import slidescore
 
 from common_lib import create_study
 
-def test_high_perf_img_server():
+def test_download_file():
     SLIDESCORE_API_KEY = os.getenv('SLIDESCORE_API_KEY') # eyb..
     SLIDESCORE_HOST = os.getenv('SLIDESCORE_HOST') # https://slidescore.com/
     USER_EMAIL = os.getenv('SLIDESCORE_EMAIL') or "pytest@example.com"

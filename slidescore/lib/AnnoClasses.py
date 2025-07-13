@@ -1,7 +1,9 @@
 from collections.abc import Sequence
 from typing import Dict, List, Union
 import array
-import numpy as np
+
+from slidescore.lib.simplify import simplifyPolygons
+# import numpy as np
 
 class Points(Sequence):
     """Class that allows to store many points space-effeciently. Used to store a mask
@@ -10,9 +12,13 @@ class Points(Sequence):
     flattened_points = None
     name = "points"
 
-    def __init__(self):
+    def __init__(self, init_points: list = None):
         self.flattened_points = array.array('I')
         super().__init__()
+
+        if init_points:
+            for point in init_points:
+                self.addPoint(point[0], point[1])
 
     def __getitem__(self, i: int):
         x = self.flattened_points[i * 2]
@@ -28,8 +34,9 @@ class Points(Sequence):
 class Polygons(Sequence):
     """Somewhat space effecient method of storing the positive and negative vertices from a polygon.
     
-    Internally uses Points to store the positive vertices of each polygon"""
+    Internally uses EfficientArray to store the positive vertices of each polygon"""
     polygons = None
+    simplified_polygons = []
     negative_polygons_i = {}
     labels = []
     name = "polygons"
@@ -61,19 +68,27 @@ class Polygons(Sequence):
             self.negative_polygons_i[pos_polygon_i] = []
         self.negative_polygons_i[pos_polygon_i].append(neg_polygon_i)
 
+    def simplify(self):
+        """Simplifies the stored polygons to 1 px accuracy, and stores further simplified polygons lookup tables"""
+        self.polygons = simplifyPolygons(self.polygons, 1)
+        # Hard coded tolerance of 16 pixels for now
+        self.simplified_polygons = simplifyPolygons(self.polygons, 16)
+
     def __len__(self):
         return len(self.polygons) # Number of polygons present, pos & neg
 
 class Heatmap():
     """Stores an x/y/value map of a heatmap"""
-    matrix: np.ndarray
+    matrix: list
     x_offset: int
     y_offset: int
     size_per_pixel: int
     name = "heatmap"
 
     def __init__(self, data: list, x_offset: int, y_offset: int, size_per_pixel: int):
-        self.matrix = np.array(data, dtype=np.ubyte)
+        # data is 2d matrix containing the pixels
+        self.matrix = self.generate_2d_ubyte_array(len(data), len(data[0]))
+        self.copy_matrix_to_larger(data, self.matrix)
 
         self.x_offset = x_offset
         self.y_offset = y_offset
@@ -84,15 +99,14 @@ class Heatmap():
     def setPoint(self, x: int, y: int, value: int):
         """Sets a point in the heatmap, increases matrix array if needed"""
         # First check if the current matrix can hold this xy
-        current_size = self.matrix.shape
+        current_size = len(self.matrix), len(self.matrix[0])
         # Matrix is indexed with [y][x]!
         max_y = max(current_size[0], y + 1)
         max_x = max(current_size[1], x + 1)
         
         if max_y > current_size[0] or max_x > current_size[1]:
-            new_size = (max_y, max_x)
-            new_matrix = np.zeros(new_size, dtype=np.ubyte)
-            new_matrix[:current_size[0], :current_size[1]] = self.matrix
+            new_matrix = self.generate_2d_ubyte_array(max_y, max_x)
+            self.copy_matrix_to_larger(self.matrix, new_matrix)
             self.matrix = new_matrix
 
         # Then simply assign the value
@@ -105,8 +119,24 @@ class Heatmap():
         metadata['sizePerPixel'] = self.size_per_pixel
         return metadata
 
+    def generate_2d_ubyte_array(self, num_rows, num_cols):
+        """Generate a 2D array of type 'ubyte' with the specified number of rows and columns.
+        Returns:
+        - A 2D list of `array.array` of type 'B' (unsigned byte).
+        """
+        return [array.array('B', [0] * num_cols) for _ in range(num_rows)]
+
+    def copy_matrix_to_larger(self, source, target):
+        """Copies a smaller matrix into a larger one.
+    
+        The function assumes that the target matrix is large enough to contain the source matrix.
+        """
+        for i in range(len(source)):
+            for j in range(len(source[0])):
+                target[i][j] = source[i][j]
+
     def __len__(self):
-        return self.matrix.shape[0] * self.matrix.shape[1] # Number of bytes occupied
+        return len(self.matrix) * len(self.matrix[0]) # Number of bytes occupied
 
 class EfficientArray():
     """Efficient way to represent a array of arrays containing only unsigned integers"""
