@@ -337,9 +337,22 @@ def read_tsv_heatmap(path: str):
         x_offset = int(first_line_parts[1])
         y_offset = int(first_line_parts[2])
         size_per_pixel = int(first_line_parts[3])
-        data = [[]] # Start out with an empty list
+
+        # First determine the heatmap size to prevent unneeded copies
+        prev_poss = fh.tell()
+        max_y = 0
+        max_x = 0
+        for line in fh:
+            line_parts = line.split()
+            x, y, value = int(line_parts[0]), int(line_parts[1]), int(line_parts[2])
+            max_y = max(max_y, y + 1)
+            max_x = max(max_x, x + 1)
+
+        fh.seek(prev_poss) # go back to beginning of data
 
         # Construct the heatmap
+        data = [[0] * max_x for _ in range(max_y)]
+        # Parse again to save the results
         heatmap = Heatmap(data, x_offset, y_offset, size_per_pixel)
         for line in fh:
             line_parts = line.split()
@@ -364,7 +377,23 @@ def read_tsv_binary_heatmap(path: str):
         x_offset = int(first_line_parts[1])
         y_offset = int(first_line_parts[2])
         size_per_pixel = int(first_line_parts[3])
-        data = [[]] # Start out with an empty list
+
+        # First determine the heatmap size to prevent unneeded copies
+        prev_poss = fh.tell()
+        max_y = 0
+        max_x = 0
+        for line in fh:
+            line_parts = line.split()
+            x, y = int(line_parts[0]), int(line_parts[1])
+            max_y = max(max_y, y + 1)
+            max_x = max(max_x, x + 1)
+
+        fh.seek(prev_poss) # go back to beginning of data
+
+        # Construct the heatmap
+        data = [[0] * max_x for _ in range(max_y)]
+        # Parse again to save the results
+
 
         # Construct the heatmap
         heatmap = Heatmap(data, x_offset, y_offset, size_per_pixel)
