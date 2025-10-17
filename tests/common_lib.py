@@ -23,7 +23,7 @@ def create_study(client: slidescore.APIClient, study_name: str, email: str, ques
 
     # Upload example slide
     cur_file_dir = os.path.abspath(os.path.dirname(__file__))
-    example_slide_path = os.path.join(cur_file_dir, 'test_slide.png')
+    example_slide_path = os.path.join(cur_file_dir, 'test-image.TiFF')
     client.upload_file(example_slide_path, study_name)
     
     # Import the study

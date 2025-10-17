@@ -9,19 +9,13 @@ For more examples see the examples folder
 
 ## Basic usage
 
-- Import the module
-- setup token
-- setup URL of the Slide Score server
-- create an instance of the API Client
+Import the module and use the token and Slide Score server URL to create an instance of the API Client:
 
     from slidescore import *
-
-
     token="eyJ....<your token>...."
     url="https://slidescore.example.com/"
-
     client = APIClient(url, token)
-    
+
 ## Downloading a slide 
 
 Downloads a slide to the current directory ("."). Check the URL of the slide for image ID and study ID, or click Export cases button on study overview to get a list of slide IDs.
