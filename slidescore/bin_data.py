@@ -21,6 +21,8 @@ def main(argv=None):
                         help='Path of JSON file containing user-specified metadata about the input file, will be encoded in the output file')
     parser.add_argument('--points-type', '-pt', choices=['mask', 'circles'], default="circles",
                         help='Type of points that are provided in the TSV, either single pixels (mask), or center points of circles (default)')
+    parser.add_argument('--experimental', action='store_true', default=False,
+                        help='Enable experimental support for anno2 formats not universally supported')
 
     # Parse the arguments
     args = parser.parse_args(argv)
@@ -31,7 +33,7 @@ def main(argv=None):
     
     # Parse the input items
     if raw_items_path.endswith('.tsv'):
-        items = read_tsv(raw_items_path, args.points_type)
+        items = read_tsv(raw_items_path, args.points_type, args.experimental)
     elif raw_items_path.endswith('.geojson'):
         items = read_geo_json(raw_items_path)
     elif raw_items_path.endswith('.json'):

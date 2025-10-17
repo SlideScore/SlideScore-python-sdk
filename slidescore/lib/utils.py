@@ -9,7 +9,7 @@ from .AnnoClasses import EfficientArray, Points, Polygons, Heatmap
 from .PolygonContainer import PolygonContainer
 
 # Importing functions
-def read_tsv(path: str, points_type: str):
+def read_tsv(path: str, points_type: str, support_experimental = False):
     """Function to parse either points or polygons from a .tsv file on disk. Reads the first line to determine
     whether points or polygons are encoded. See their respective functions for the expected format on disk."""
     items = None
@@ -22,6 +22,8 @@ def read_tsv(path: str, points_type: str):
     are_points = len(line_parts) == 2
     is_heatmap = line_parts[0].lower() == 'heatmap'
     is_binary_heatmap = line_parts[0].lower() == 'binary-heatmap'
+    if is_binary_heatmap and not support_experimental:
+        raise Exception('Wanted to encode a binary heatmap but --experimental is not present')
 
     if is_heatmap:
         items = read_tsv_heatmap(path)
