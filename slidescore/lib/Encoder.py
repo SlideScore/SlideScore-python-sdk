@@ -39,9 +39,9 @@ class Encoder():
         }
         self.dataLookup = []
 
-        type_string = items.name.lower() # can be points/mask/polygons/heatmap
+        type_string = items.name.lower() # can be points/mask/polygons/heatmap/binary-heatmap
         self.system_metadata = {
-            "version": "0.0.3",
+            "version": "0.2.0",
             "type": type_string,
             "numItems": len(items)
         }
@@ -52,10 +52,13 @@ class Encoder():
         elif isinstance(items, Polygons):
             num_points = int(len(items.polygons.valuesArray) / 2)
             log("Loaded", self.dataItems["numItems"], "polygons in encoder, with num points", num_points)
+            items.simplify()
+            num_points = int(len(items.polygons.valuesArray) / 2)
+            log("Simplified to num points", num_points)
+
+
         elif isinstance(items, Heatmap):
-            log("Loaded", self.dataItems["numItems"], "byte heatmap in encoder, with shape", items.matrix.shape)
-
-
+            log("Loaded", self.dataItems["numItems"], f"byte {items.name} in encoder, with shape", len(self.items.matrix), len(self.items.matrix[0]))
 
     def calc_rect_around_item(self, item: Item):
         """Calculates a bounding box around a point or polygon, if it is a point the rectangle is the point"""
@@ -116,8 +119,8 @@ class Encoder():
         elif isinstance(self.items, Polygons):
             self.dataItems["polygonContainer"] = self.bin_polygons_into_tiles(tile_size)
         elif isinstance(self.items, Heatmap):
-            shape = self.items.matrix.shape
-            self.dataItems["heatmapPng"] = encode_png(self.items.matrix, shape[1], shape[0], bitdepth=8)
+            height, width = len(self.items.matrix), len(self.items.matrix[0])
+            self.dataItems["heatmapPng"] = encode_png(self.items.matrix, width, height, bitdepth=8)
 
 
     def bin_points_into_tiles(self, tile_size):
@@ -132,10 +135,9 @@ class Encoder():
         # Determine if we want to store the points as a compressed JSON, or as PNG tiles
         are_few_points = len(items) < self.few_points_cutoff
         is_points = self.items.name == 'points' # Could also be mask
-        has_metadata = 'metadata' in self.items
 
-        if (are_few_points and is_points) or (has_metadata and is_points):
-            log(f"Detected few points ({len(items)}), saving anno1 JSON")
+        if (are_few_points and is_points):
+            log(f"Detected few points ({len(items)}) , saving anno1 JSON")
             # Instead encode as a Anno1 JSON, that will get compressed when dumping to a file
             anno1_points = [{"x": img_x, "y": img_y} for img_x, img_y in items]
             return json.dumps(anno1_points)
@@ -338,6 +340,13 @@ class Encoder():
                 else:
                     zip.writestr(f'anno1_points.json.br', brotli.compress(self.dataItems["masks"].encode(), quality=8))
             
+            # Add metadata if available, this is both for polygons and points
+            has_metadata = len(getattr(self.items, 'metadata', []))
+            if has_metadata:
+                item_metadata_json = json.dumps(self.items.metadata)
+                item_metadata_json_compressed_bytes = brotli.compress(str.encode(item_metadata_json), quality=8)
+                zip.writestr(f'items_metadata.json.br', item_metadata_json_compressed_bytes)
+
             # Add polygons if possible
             if 'polygonContainer' in self.dataItems:
                 add_polygon_container_2_zip(zip, self.dataItems["polygonContainer"], 'polygon_container')
@@ -383,9 +392,15 @@ def add_polygon_container_2_zip(zip, container, dir_name):
     polygon_compressed_bytes = brotli.compress(polygon_bytes, quality=8)
     zip.writestr(f'{dir_name}/encoded_polygons.bin.br', polygon_compressed_bytes)
 
+    # Then add the (compressed) simplified encoded polygon bytes
+    simpl_polygon_bytes = container.encode_simplified_polygons()
+    simpl_polygon_compressed_bytes = brotli.compress(simpl_polygon_bytes, quality=8)
+    zip.writestr(f'{dir_name}/simpl_encoded_polygons.bin.br', simpl_polygon_compressed_bytes)
+
     # Finally add the negative polygons
     negative_polygons_bytes = str.encode(json.dumps(container.polygons.negative_polygons_i, indent=2))
     zip.writestr(f'{dir_name}/negative_polygons.json', negative_polygons_bytes)
+
 
 def add_buffer_2_tar(tar, buffer, name):
     """Utility to add a buffer to a TARball with a certain name. Used to encode the points tile PNG's"""

@@ -9,7 +9,7 @@ from .AnnoClasses import EfficientArray, Points, Polygons, Heatmap
 from .PolygonContainer import PolygonContainer
 
 # Importing functions
-def read_tsv(path: str, points_type: str):
+def read_tsv(path: str, points_type: str, support_experimental = False):
     """Function to parse either points or polygons from a .tsv file on disk. Reads the first line to determine
     whether points or polygons are encoded. See their respective functions for the expected format on disk."""
     items = None
@@ -21,9 +21,14 @@ def read_tsv(path: str, points_type: str):
 
     are_points = len(line_parts) == 2
     is_heatmap = line_parts[0].lower() == 'heatmap'
+    is_binary_heatmap = line_parts[0].lower() == 'binary-heatmap'
+    if is_binary_heatmap and not support_experimental:
+        raise Exception('Wanted to encode a binary heatmap but --experimental is not present')
 
     if is_heatmap:
         items = read_tsv_heatmap(path)
+    elif is_binary_heatmap:
+        items = read_tsv_binary_heatmap(path)
     elif are_points:
         items = read_tsv_points(path)
         if points_type == "mask":
@@ -77,56 +82,91 @@ def read_tsv_polygons(path: str):
     return items
 
 def read_geo_json(path: str):
-    """Assumed are the QuPath GeoJSON files, containing only polygons."""
-    items = Polygons()
+    """Assumed are the QuPath GeoJSON files, containing only polygons or points."""
+    # Return either of these, show warning if both have entries
+    polygons = Polygons()
+    points = Points()
 
     with open(path, 'r') as fh:
         data = json.load(fh)
-    polygon_generator = extract_polygons_from_geojson(data)
-    for positive_vertices, negative_vertices_list in polygon_generator:
-        # Round the positive vertices into ints and add them to a Polygons class
-        cur_polygon = []
-        for point in positive_vertices:
+    
+    polygon_or_points_generator = extract_geojson(data)
+    for metadata, positive_vertices, negative_vertices_list in polygon_or_points_generator:
+        if len(positive_vertices) == 1:
+            # This is a point, not a polygon
+            point = positive_vertices[0]
             x, y = round(point[0]), round(point[1])
-            cur_polygon.extend([x, y])
-        pos_polygon_i = items.addPolygon(cur_polygon)
+            points.addPoint(x, y)
 
-        # Add any negative polygons, if present
-        for negative_vertices in negative_vertices_list:
-            cur_neg_polygon = []
-            for point in negative_vertices:
+            if metadata is not None:
+                points.metadata[f'{x},{y}'] = metadata
+        else:
+            # Round the positive vertices into ints and add them to a Polygons class
+            cur_polygon = []
+            for point in positive_vertices:
                 x, y = round(point[0]), round(point[1])
-                cur_neg_polygon.extend([x, y])
-            neg_polygon_i = items.addPolygon(cur_neg_polygon)
+                cur_polygon.extend([x, y])
+            pos_polygon_i = polygons.addPolygon(cur_polygon)
 
-            items.linkPosPolygonToNegPolygon(pos_polygon_i, neg_polygon_i)
+            # Add per-polygon metadata
+            if metadata is not None:
+                polygons.metadata[pos_polygon_i] = metadata
 
-    if len(items) == 0:
-        sys.exit("No items loaded")
+            # Add any negative polygons, if present
+            for negative_vertices in negative_vertices_list:
+                cur_neg_polygon = []
+                for point in negative_vertices:
+                    x, y = round(point[0]), round(point[1])
+                    cur_neg_polygon.extend([x, y])
+                neg_polygon_i = polygons.addPolygon(cur_neg_polygon)
 
-    return items
+                polygons.linkPosPolygonToNegPolygon(pos_polygon_i, neg_polygon_i)
 
-def extract_polygons_from_geojson(data):
-    """Yields all polygons and their negative vertices from a QuPath GeoJSON data object like so:
-    yield (positiveVertices, [negativeVertices1, negativeVertices2, ...])
+    if len(points) == 0 and len(polygons) == 0:
+        raise Exception("No points or polygons loaded from GeoJSON")
+
+    if len(points) != 0 and len(polygons) == 0:
+        return points
+
+    if len(points) == 0 and len(polygons) != 0:
+        return polygons
+
+    # We got _both_ polygons and points
+    print("WARNING: Detected BOTH points and polygons in GeoJSON, only continueing with polygons", file=sys.stderr)
+    print("WARNING: Please remove the points from the GeoJSON to prevent ambiguity", file=sys.stderr)
+    return polygons
+
+def extract_geojson(data):
+    """Yields all polygons and points and their negative vertices from a QuPath GeoJSON data object like so:
+    yield (metadata, positiveVertices, [negativeVertices1, negativeVertices2, ...])
+    if postiveVertices is of length 2, store them as points
+    https://datatracker.ietf.org/doc/html/rfc7946
     """
     for feature in data["features"]:
         if "geometry" not in feature:
             continue
-    
+        metadata = feature.get('properties')
+
         geometry = feature["geometry"]
         if geometry["type"] == "Polygon":
-            yield geometry["coordinates"][0], geometry["coordinates"][1:]
+            # The first entry is the "exterior" ring and the others "interior" rings
+            # so the second ones are deemed "negative" polygons, because they are holes
+            yield (metadata, geometry["coordinates"][0], geometry["coordinates"][1:])
             
             if "nucleusGeometry" not in feature:
                 continue
             nucl_geometry = feature["nucleusGeometry"]
             if nucl_geometry["type"] != "Polygon":
                 continue
-            yield nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:]
+            yield (metadata, nucl_geometry["coordinates"][0], nucl_geometry["coordinates"][1:])
         elif geometry["type"] == "MultiPolygon":
             for polygon in geometry["coordinates"]:
-                yield polygon[0], polygon[1:]
+                yield (None, polygon[0], polygon[1:])
+        elif geometry["type"] == "Point":
+            # If we got a GeoJSON with points, report them as a polygon of length 2
+            # Callee should handle this
+            for polygon in geometry["coordinates"]:
+                yield (metadata, [geometry["coordinates"]], [])
 
 def read_slidescore_json(data):
     """Parses JSON's that are created using the SlideScore Front-end.
@@ -299,15 +339,71 @@ def read_tsv_heatmap(path: str):
         x_offset = int(first_line_parts[1])
         y_offset = int(first_line_parts[2])
         size_per_pixel = int(first_line_parts[3])
-        data = [[]] # Start out with an empty list
+
+        # First determine the heatmap size to prevent unneeded copies
+        prev_poss = fh.tell()
+        max_y = 0
+        max_x = 0
+        for line in fh:
+            line_parts = line.split()
+            x, y, value = int(line_parts[0]), int(line_parts[1]), int(line_parts[2])
+            max_y = max(max_y, y + 1)
+            max_x = max(max_x, x + 1)
+
+        fh.seek(prev_poss) # go back to beginning of data
 
         # Construct the heatmap
+        data = [[0] * max_x for _ in range(max_y)]
+        # Parse again to save the results
         heatmap = Heatmap(data, x_offset, y_offset, size_per_pixel)
         for line in fh:
             line_parts = line.split()
             x, y, value = int(line_parts[0]), int(line_parts[1]), int(line_parts[2])
             heatmap.setPoint(x, y, value)
 
+    return heatmap
+
+def read_tsv_binary_heatmap(path: str):
+    """Read lines from a file to extract binary heatmap points. One point, consisting of 2 coordinates seperated by a tab, should be encoded per line.
+    The first line should be a header, with the first word being "binary-heatmap", then the x and y offset, and last the size per pixel
+    Like this:
+    ```
+    binary-heatmap 100 100 16 # x_offset y_offset size_per_pixel
+    x1 y1
+    x2 y2
+    etc.
+    ```
+    """
+    with open(path, 'r') as fh:
+        first_line_parts = fh.readline().split()
+        x_offset = int(first_line_parts[1])
+        y_offset = int(first_line_parts[2])
+        size_per_pixel = int(first_line_parts[3])
+
+        # First determine the heatmap size to prevent unneeded copies
+        prev_poss = fh.tell()
+        max_y = 0
+        max_x = 0
+        for line in fh:
+            line_parts = line.split()
+            x, y = int(line_parts[0]), int(line_parts[1])
+            max_y = max(max_y, y + 1)
+            max_x = max(max_x, x + 1)
+
+        fh.seek(prev_poss) # go back to beginning of data
+
+        # Construct the heatmap
+        data = [[0] * max_x for _ in range(max_y)]
+        # Parse again to save the results
+
+
+        # Construct the heatmap
+        heatmap = Heatmap(data, x_offset, y_offset, size_per_pixel)
+        for line in fh:
+            line_parts = line.split()
+            x, y = int(line_parts[0]), int(line_parts[1])
+            heatmap.setPoint(x, y, 255)
+    heatmap.name = 'binary-heatmap'
     return heatmap
 
 # Export functions

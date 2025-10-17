@@ -3,7 +3,7 @@ import array
 from io import BufferedWriter, BytesIO
 from typing import List
 
-from .AnnoClasses import Polygons
+from .AnnoClasses import EfficientArray, Polygons
 from .omega_encoder import OmegaEncoder
 
 """
@@ -77,12 +77,12 @@ def calc_num_tile_rows_cols(polygon: Polygon, tile_size: int):
 
     return num_rows, num_cols
 
-def concat_polygons(polygons: Polygons):
+def concat_polygons(polygons: EfficientArray):
     """Concatenates/converts a "Polygons" object together into a single big polygon and a list of polygon sizes"""
     polygon_lengths = array.array('I')
-    combined_polygon = polygons.polygons.valuesArray
+    combined_polygon = polygons.valuesArray
 
-    offsets = polygons.polygons.offsetArray
+    offsets = polygons.offsetArray
     for i in range(1, len(offsets)):
         last_offset = offsets[i - 1]
         offset = offsets[i]
@@ -127,7 +127,7 @@ def dump_2_disk(fh: BufferedWriter, polygon_lengths: array.ArrayType, tile_size:
     fh.write(len(remainders).to_bytes(4, 'little'))
     fh.write(remainders.tobytes())
 
-def polygons_2_bytes(polygons: Polygons, tile_size = 256):
+def polygons_2_bytes(polygons: EfficientArray, tile_size = 256):
     """Encodes polygons and dumps them to a byte array"""
 
     polygon_lengths, combined_polygon = concat_polygons(polygons)
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     polygon = [400, 400, 200, 200, 5, 5, 3, 3, 0, 0]
     polygons.addPolygon(polygon)
     
-    buf = polygons_2_bytes(polygons)
+    buf = polygons_2_bytes(polygons.polygons)
     with open('encoded_polygons.bin', 'wb') as fh:
         fh.write(buf)
     print("Wrote encoded_polygons.bin")

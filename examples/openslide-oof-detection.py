@@ -10,7 +10,7 @@ import openslide
 import skimage
 from skimage import io
 from skimage.color import rgb2gray
-import numpy as np
+import numpy as np # $ pip install numpy
 
 def apply_mask(orig_img, mask, mask_color):
     overlay = np.zeros_like(orig_img, dtype=np.uint8)

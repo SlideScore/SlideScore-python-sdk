@@ -21,8 +21,7 @@ setuptools.setup(
         'bitarray>=2.7,<3',
         'Brotli>=1.0.0',
         'msgpack>=1.0.0',
-        'pypng==0.20220715.0',
-        'numpy'
+        'pypng==0.20220715.0'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
