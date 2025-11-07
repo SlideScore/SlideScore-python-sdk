@@ -4,6 +4,8 @@ import array
 import time
 import json
 import math
+import logging
+
 # Local libs
 from .AnnoClasses import EfficientArray, Points, Polygons, Heatmap
 from .PolygonContainer import PolygonContainer
@@ -468,3 +470,35 @@ def log(*args):
     """Logs the arguments to the console, prefixing the time passed since script execution began"""
     time_passed = time.time() - time_on_load
     print("{:.2f}".format(time_passed), ' '.join(map(str, args)))
+
+
+NOTICE_LEVEL = 25  # between INFO (20) and WARNING (30)
+logging.addLevelName(NOTICE_LEVEL, "NOTICE")
+
+def notice(self, message, *args, **kwargs):
+    if self.isEnabledFor(NOTICE_LEVEL):
+        self._log(NOTICE_LEVEL, message, args, **kwargs)
+
+logging.Logger.notice = notice
+
+def get_logger(verbosity: int) -> logging.Logger:
+    """Configure and return a logger with the given verbosity level."""
+    # Map verbosity count to logging levels
+    if verbosity == 0:
+        level = NOTICE_LEVEL
+    elif verbosity == 1:
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+
+    # Configure root logger
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S"
+    )
+
+    logger = logging.getLogger(__name__)
+    logger.level = level
+
+    return logger
