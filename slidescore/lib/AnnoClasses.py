@@ -49,9 +49,13 @@ class Polygons(Sequence):
         self.labels = []
         super().__init__()
 
-    def __getitem__(self, i: int):
+    def __getitem__(self, i: int | slice):
         """Retrieves a polygon from the values array and any associated negative polygons, if they are
         associated."""
+        if isinstance(i, slice):
+            start, stop, step = i.indices(len(self))
+            return [self[index] for index in range(start, stop, step)]
+
         points_flat = self.polygons.getValues(i)
         postive_vertices = [(points_flat[i], points_flat[i + 1]) for i in range(0, len(points_flat), 2)]
         return {

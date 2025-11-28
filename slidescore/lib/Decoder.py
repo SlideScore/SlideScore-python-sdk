@@ -1,20 +1,23 @@
 import math
 import array
 import json
+import os
 import tarfile
 import zipfile
 import io
 from typing import List, Dict, Any
 import zipfile
-from bitarray import bitarray
+from datetime import datetime, timezone
 from packaging import version
 
+from bitarray import bitarray
 import msgpack
 import brotli
 
 from slidescore.lib.omega_encoder import OmegaEncoder
 
 from .utils import get_logger
+from .AnnoClasses import Polygons, Items
 
 logger = get_logger(0)
 
@@ -25,6 +28,7 @@ class Decoder():
     anno2_version = version.parse("0.0.0")
     anno2_type = ''
     system_metadata = None
+    items: Items = None
 
     def __init__(self, anno2: zipfile.ZipFile, verbosity = 0) -> None:
         """Initialize decoder with a Anno2 zipfile, checking if we can convert it
@@ -65,7 +69,102 @@ class Decoder():
     def decode(self):
         logger.debug("Starting decode")
         if self.anno2_type == 'polygons':
-            self._decode_polygons()
+            self.items = self._decode_polygons()
+        else:
+            raise TypeError(f'Anno2 type {self.anno2_type=} not recognized')
+        
+        assert self.items is not None
+        
+        if type(self.system_metadata['numItems']) is int:
+            if self.system_metadata['numItems'] == len(self.items):
+                logger.notice(f'Decoded anno2 had the correct number of items ({len(self.items)})')
+            else:
+                logger.warning(f"Decoded anno2 had an unexpected number of items ({self.system_metadata['numItems']} != {len(self.items)})")
+        else:
+            logger.debug('Could not verify the numItems because it is not an int')
+
+        logger.debug("End decode")
+
+    def dump_to_file(self, path: str):
+        """Dumps the decoded items to a file on disk, file format depends on the . Also encodes the polygon if needed."""
+        logger.debug("Encoding and dumping to file")
+
+        # Find the used output type
+        preffered_output_type = self._infer_output_type(path)
+        all_supported_output_types = {
+            Polygons: ['json']
+        }
+
+        if not type(self.items) in all_supported_output_types:
+            raise ValueError(f'Failed to find {type(self.items)=} among supported output types')
+
+        cur_supported_output_types = all_supported_output_types[type(self.items)]
+        if preffered_output_type in cur_supported_output_types:
+            output_type = preffered_output_type
+            logger.info(f'Was able to select {preffered_output_type} as output type')
+        else:
+            output_type = cur_supported_output_types[0]
+            logger.warning(f'Was not able to select the detected preffered output type ({preffered_output_type}) as output type, using {output_type}')
+
+        # Dump the items data to the detected available output type
+        if output_type == 'json':
+            anno1_obj = self._items_to_anno1_obj()
+            with open(path, 'w') as output_fh:
+                json.dump(anno1_obj, output_fh)
+
+        logger.info(f'Dumped {type(self.items)=} to {path=}')
+
+    def _items_to_anno1_obj(self):
+        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        anno1_object = []
+
+        if type(self.items) is Polygons:
+            for i in range(len(self.items)):
+                anno1_polygon = {
+                    "type": 'polygon',
+                    "modifiedOn": timestamp,
+                    "points": []
+                }
+                polygon = self.items[i]
+                for x, y in polygon['positiveVertices']:
+                    anno1_polygon['points'].append({ "x": x, "y": y })
+                anno1_object.append(anno1_polygon)
+        else:
+            raise TypeError(f'Type {type(self.items)} not yet implemented for conversion to Anno1')
+        return anno1_object
+
+    def _infer_output_type(self, path: str):
+        """
+        Parse a path and return a normalized preferred output type.
+
+        Supported:
+            - .tsv
+            - .json
+            - .png
+            - .geo.json / .geojson
+
+        Returns:
+            A string representing the normalized output type, e.g.:
+                "tsv", "json", "png", "geojson", "unknown"
+        """
+        filename = os.path.basename(path).lower()
+
+        # Handle .geo.json (two-suffix case)
+        if filename.endswith(".geo.json"):
+            return "geojson"
+
+        # Get last extension
+        ext = os.path.splitext(filename)[1]
+
+        # Normalize extension (strip leading dot)
+        ext = ext.lstrip(".")
+
+        # Map simple extensions
+        if ext in {"tsv", "json", "png", "geojson"}:
+            return ext
+
+        return "unknown"
+
 
     def _decode_polygons(self):
         logger.debug("Starting decode of polygons")
@@ -112,7 +211,7 @@ class Decoder():
 
         polygon_lengths = array.array('I')
         polygon_lengths.frombytes(polygon_lengths_bytes)
-        logger.debug(f"{tile_size=} {num_rows} {num_cols=} {polygon_lengths_byte_len=} {polygon_lengths=}")
+        logger.info(f"{tile_size=} {num_rows} {num_cols=} {polygon_lengths_byte_len=} {polygon_lengths=}")
         
         if len(polygon_lengths) != self.system_metadata['numItems']:
             logger.warning(f"Did not decode the expected number ({self.system_metadata['numItems']}) of polgons, got {len(polygon_lengths)}")
@@ -131,7 +230,7 @@ class Decoder():
 
         # Perform final decode step
         raw_polygons = self._polygons_recombine_into_raw(x_jumps, y_jumps, num_points_in_tile, tile_size, remainders, polygon_lengths)
-        logger.debug(f'{raw_polygons[:5]=}')
+        logger.info(f'{raw_polygons[:5]=}')
         return raw_polygons
 
     def _decode_omega_encoded_array(self, buf: memoryview, pos: int, type: str):
@@ -161,7 +260,7 @@ class Decoder():
         num_points = len(remainders) // 2
         
         polygon_lengths = polygon_lengths[:] # make a copy because we are going to modify it
-        polygons = []
+        polygons = Polygons()
         cur_polygon = []
 
         remainder_i = 0
@@ -189,7 +288,7 @@ class Decoder():
 
                 cur_polygon.extend([raw_x, raw_y])
                 if len(cur_polygon) == polygon_lengths[0]:
-                    polygons.append(cur_polygon)
+                    polygons.addPolygon(cur_polygon)
                     polygon_lengths = polygon_lengths[1:]
                     cur_polygon = []
 

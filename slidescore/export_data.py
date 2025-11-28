@@ -1,5 +1,11 @@
 DESC = """
 This program converts the Anno2 binned file to a common data format, like TSV, GeoJSON, or PNG. 
+A preffered output type can be given by passing a output path with an appropriate extension:
+.json for Anno1 JSON,
+.geo.json / .geojson for GeoJSON,
+the others as expected.
+
+Be warned that this is not guaranteed, and the output file format should be checked manually.
 Author: Bart.
 """
 
@@ -38,6 +44,9 @@ def main(argv=None):
     anno2 = zipfile.ZipFile(anno2_path)
     decoder = Decoder(anno2, args.verbose)
     decoder.decode()
+    logger.notice('Decoded items succesfully, saving to disk')
+    decoder.dump_to_file(output_path)
+    logger.notice('Finished saving to disk')
 
 if __name__ == "__main__":
     main()
