@@ -3,6 +3,7 @@ import array
 import json
 import os
 import tarfile
+import typing
 import zipfile
 import io
 from typing import List, Dict, Any
@@ -13,18 +14,19 @@ from packaging import version
 from bitarray import bitarray
 import msgpack
 import brotli
+import png
 
 from slidescore.lib.omega_encoder import OmegaEncoder
 
 from .utils import get_logger
-from .AnnoClasses import Polygons, Items
+from .AnnoClasses import Polygons, Points, Items
 
 logger = get_logger(0)
 
 class Decoder():
     """Encompassing class to decode Anno2"""
 
-    supported_types = ['polygons']
+    supported_types = ['polygons', 'points', 'mask'] # mask is processed the same way as points
     anno2_version = version.parse("0.0.0")
     anno2_type = ''
     system_metadata = None
@@ -62,7 +64,7 @@ class Decoder():
                 # Check the type
                 self.anno2_type = self.system_metadata['type']
                 if self.anno2_type not in self.supported_types:
-                    raise ValueError(f"Anno2 type {self.anno2_type} not in supported types {self.supported_types}")
+                    raise ValueError(f"Anno2 type '{self.anno2_type}' not in supported types {self.supported_types}")
         except KeyError:
             raise Exception('Could not detect system_metadata.json in the Anno2 Zipfile, please check your input')
 
@@ -70,6 +72,8 @@ class Decoder():
         logger.debug("Starting decode")
         if self.anno2_type == 'polygons':
             self.items = self._decode_polygons()
+        elif self.anno2_type == 'points' or self.anno2_type == 'mask':
+            self.items = self._decode_points()
         else:
             raise TypeError(f'Anno2 type {self.anno2_type=} not recognized')
         
@@ -92,7 +96,8 @@ class Decoder():
         # Find the used output type
         preffered_output_type = self._infer_output_type(path)
         all_supported_output_types = {
-            Polygons: ['json']
+            Polygons: ['json', 'tsv', 'geojson'],
+            Points: ['json']
         }
 
         if not type(self.items) in all_supported_output_types:
@@ -109,6 +114,13 @@ class Decoder():
         # Dump the items data to the detected available output type
         if output_type == 'json':
             anno1_obj = self._items_to_anno1_obj()
+            with open(path, 'w') as output_fh:
+                json.dump(anno1_obj, output_fh)
+        elif output_type == 'tsv':
+            with open(path, 'w') as output_fh:
+                self._write_items_to_tsv(output_fh)
+        elif output_type == 'geojson':
+            anno1_obj = self._items_to_geojson_obj()
             with open(path, 'w') as output_fh:
                 json.dump(anno1_obj, output_fh)
 
@@ -129,9 +141,59 @@ class Decoder():
                 for x, y in polygon['positiveVertices']:
                     anno1_polygon['points'].append({ "x": x, "y": y })
                 anno1_object.append(anno1_polygon)
+        elif type(self.items) is Points:
+            anno1_points = [self.items[i] for i in range(len(self.items))]
+            return anno1_points
         else:
             raise TypeError(f'Type {type(self.items)} not yet implemented for conversion to Anno1')
         return anno1_object
+
+    def _write_items_to_tsv(self, fh: typing.TextIO):
+        if type(self.items) is Polygons:
+            for i in range(len(self.items)):
+                polygon = self.items[i]
+                for j in range(len(polygon['positiveVertices'])):
+                    x, y = polygon['positiveVertices'][j]
+                    is_last = j == len(polygon['positiveVertices']) - 1
+                    logger.debug(f'{x=} {y=} {is_last=}')
+                    fh.write(f'{x}\t{y}' + ('\t' if not is_last else ''))
+                fh.write('\n')
+        else:
+            raise TypeError(f'Type {type(self.items)} not yet implemented for conversion to TSV')
+        return None
+
+    def _items_to_geojson_obj(self):
+        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        geojson_features = []
+        geojson_object = {
+            "type": "FeatureCollection",
+            "features": geojson_features
+        }
+
+        if type(self.items) is Polygons:
+            for i in range(len(self.items)):
+                points = [] # [[x1, y1], [x2, y2], etc...]
+                geojson_polygon = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [ points ]
+                    },
+                    "properties": {
+                        "exported_at": timestamp,
+                        "exported_from": "slidescore-anno2"
+                    }
+                }
+                polygon = self.items[i]
+
+                # We do not re-order the points to follow the right hand rule,
+                # because that order would not have been present in the original dataset
+                for x, y in polygon['positiveVertices']:
+                    points.append([x, y])
+                geojson_features.append(geojson_polygon)
+        else:
+            raise TypeError(f'Type {type(self.items)} not yet implemented for conversion to GeoJSON')
+        return geojson_object
 
     def _infer_output_type(self, path: str):
         """
@@ -164,6 +226,51 @@ class Decoder():
             return ext
 
         return "unknown"
+
+    def _decode_points(self):
+        logger.debug("Starting decode of points (or mask)")
+        """
+        Points have 2 encoding options
+            if there are few points or the density is low,
+                a brotli encoded Anno1 JSON is simply stored
+            If there are many points a masks.tar.gz is created with tile_x{tile_x}_y{tile_y}.png files
+                this contains a black and white png with the points (aka a mask)
+        """
+        points = Points()
+        try:
+            with self.anno2.open('anno1_points.json.br') as f:
+                anno1_points_bytes: bytes = brotli.decompress(f.read())
+                anno1_points = json.loads(anno1_points_bytes)
+                for point in anno1_points:
+                    x, y = point['x'], point['y']
+                    points.addPoint(x, y)
+            return points
+        except KeyError:
+            # if the points are stored as a mask
+            with self.anno2.open('masks.tar.gz') as f:
+                with tarfile.open(fileobj=f, mode="r:gz") as tar:
+                    for member in tar.getmembers():
+                        logger.debug(f"Name: {member.name}, Size: {member.size} bytes")
+                        
+                        # If you want to read the content of a file
+                        if member.isfile():
+                            file_content = tar.extractfile(member).read()
+                            if file_content[:4] == b'\x89PNG':
+                                # It's a PNG
+                                assert member.name.startswith('tile_')
+                                tile_name_parts = member.name.split('_')
+                                logger.debug(f'{tile_name_parts=}')
+                                tile_x = int(tile_name_parts[1][1:])
+                                tile_y = int(tile_name_parts[2][1:].removesuffix('.png'))
+                                
+                                # tile_size should always be 256 for now, perhaps different in newer anno2 versions
+                                tile_size, png_points = self._decode_png(file_content)
+                                for x, y in png_points:
+                                    img_x = tile_x * tile_size + x
+                                    img_y = tile_y * tile_size + y
+                                    logger.debug(f'PNG point decoded: {img_x}, {img_y}')
+                                    points.addPoint(img_x, img_y)
+            return points
 
 
     def _decode_polygons(self):
@@ -295,3 +402,20 @@ class Decoder():
                 remainder_i += 2
 
         return polygons
+
+    def _decode_png(self, png_buf: bytes):
+        """Decodes a PNG into a tile_size and points list"""
+        reader = png.Reader(bytes=png_buf)
+        width, height, rows, info = reader.read()
+        assert width == height
+        points = []
+        if info['bitdepth'] == 1:
+            # Extract the points from the rows
+            row_i = 0
+            for row in rows:
+                x_vals = [i for i, b in enumerate(row) if b != 0]
+                for x in x_vals:
+                    points.append((x, row_i))
+                row_i += 1
+        logger.debug(f'PNG {width=} {height=} {points=} {info=}')
+        return width, points
