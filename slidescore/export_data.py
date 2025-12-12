@@ -22,8 +22,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=DESC)
     parser.add_argument('--anno2-path', '-i', type=str, required=True,
                         help='Input file path, should be an Anno2 file')
-    parser.add_argument('--output', '-o', type=str, default = "./items.json",
+    parser.add_argument('--output', '-o', type=str, required=True,
                         help='Output path of the exported file')
+    parser.add_argument('--metadata-output', '-m', type=str, required=False,
+                        help='Output path of the user supplied metadata json (optional)')
     parser.add_argument(
         "-v", "--verbose",
         action="count",
@@ -46,6 +48,8 @@ def main(argv=None):
     decoder.decode()
     logger.notice('Decoded items succesfully, saving to disk')
     decoder.dump_to_file(output_path)
+    if args.metadata_output:
+        decoder.dump_user_metadata_to_file(args.metadata_output)
     logger.notice('Finished saving to disk')
 
 if __name__ == "__main__":
