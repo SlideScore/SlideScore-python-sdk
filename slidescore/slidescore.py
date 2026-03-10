@@ -8,6 +8,7 @@ import re
 import os
 import datetime
 from tusclient import client
+import unicodedata
 
 from .lib.utils import read_slidescore_json
 from .lib.Encoder import Encoder
@@ -391,9 +392,16 @@ class APIClient(object):
             rjson['cookiePart'] 
         )
 
+
     def _get_filename(self, s):
       fname = re.findall("filename*?=([^;]+)", s, flags=re.IGNORECASE)
-      return fname[0].strip().strip('"')        
+      fname=fname[0].strip().strip('"') 
+      
+      # Normalize unicode characters (e.g., 'ñ' becomes 'n')
+      fname = unicodedata.normalize('NFKD', fname).encode('ascii', 'ignore').decode('ascii')
+
+      fname = re.sub(r'[^\w\s.\-,;=]', '_', fname).strip()
+      return fname
         
     def download_slide(self, studyid, imageid, filepath):
         response = self.perform_request("DownloadSlide", {"studyid": studyid, "imageid": imageid}, method="GET")
