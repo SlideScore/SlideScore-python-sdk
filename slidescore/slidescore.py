@@ -690,3 +690,94 @@ class APIClient(object):
         uploadClient.upload_file(filename, folder, new_filename)
         shortguid=new_filename.split('-')[0]
         return '<div><a href="'+oururl+'/a/'+str(att_id)+'/'+shortguid+'/'+filenameonly+'" target="_blank" rel="noopener" class="jsSquireAttachment jsSquireLink" style="display: inline-block;"><span class="glyphicon glyphicon glyphicon-paperclip"> </span>&nbsp;'+label+'&nbsp;</a><br></div>'
+
+    def create_uploader_config(
+        self,
+        study_id,
+        name,
+        server_path,
+        slide_name_regex,
+        users_email,
+        do_rename_slides,
+        do_anonymize_slide,
+        expire_yyyyMMdd_utc,
+        do_submit_answers,
+        do_submit_description,
+        prefix,
+        rename_explanation,
+        description_template,
+        submit_answers_as,
+        answer_only_question,
+        do_allow_multiple_file_upload):
+        """
+        Creates an uploader configuration and returns an authentication token.
+
+        Parameters
+        ----------
+        study_id : int
+            ID of the study to which the slide will be added.
+        name : str
+            Name of the uploader configuration.
+        server_path : str
+            Path on the server where slides will be uploaded.
+        slide_name_regex : str
+            If renaming use this to specify the pattern/regular expression that new name has to conform to. Pattern has # for 0-9 and @ for a-z, a Regex must be in slashes .e.g /[a-z]/
+        users_email : str
+            Account associated with this configuration.
+        do_rename_slides : bool
+            Whether uploaded slides should be renamed.
+        do_anonymize_slide : bool
+            Whether slide labels and metadata should be anonymized.
+        expire_yyyyMMdd_utc : str
+            Expiration date in YYYYMMDD format (UTC).
+        do_submit_answers : bool
+            Whether answers to questions can be submitted.
+        do_submit_description : bool
+            Whether a description can be submitted.
+        prefix : str
+            Example prefix used when renaming slides.
+        rename_explanation : str
+            HTML explanation shown when renaming slides.
+        description_template : str
+            Example description template.
+        submit_answers_as : str
+            Email address used when submitting answers.
+        answer_only_question : str
+            Semicolon-separated list of questions.
+        do_allow_multiple_file_upload : bool
+            Whether multiple files can be uploaded at once.
+
+        Returns
+        -------
+        dict
+            id: Uploader configuration ID and
+            password: authentication token.
+        """
+        response = self.perform_request(
+            "CreateUploaderConfig",
+            {
+                "studyId": study_id,
+                "name": name,
+                "serverPath": server_path,
+                "slideNameRegex": slide_name_regex,
+                "usersEmail": users_email,
+                "doRenameSlides": do_rename_slides,
+                "doAnonymizeSlide": do_anonymize_slide,
+                "expireYyyyMMddUtc": expire_yyyyMMdd_utc,
+                "doSubmitAnswers": do_submit_answers,
+                "doSubmitDescription": do_submit_description,
+                "prefix": prefix,
+                "renameExplanation": rename_explanation,
+                "descriptionTemplate": description_template,
+                "submitAnswersAs": submit_answers_as,
+                "answerOnlyQuestion": answer_only_question,
+                "doAllowMultipleFileUpload": do_allow_multiple_file_upload,
+            }, method="POST"
+        )
+        print(response.text)
+        rjson = response.json()
+        if not rjson["success"]:
+            raise SlideScoreErrorException("Failed creating uploader config: " + response.text);
+        return rjson
+    
+    
